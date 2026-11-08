@@ -133,3 +133,40 @@ References:
 
 **Do not merge this audit PR into production `seventeen` merely because
 the Git SHA, sparse source or host Kconfig CI passes.**
+
+## 2026-11-08 — modern official Android compiler policy
+
+We do **not** use Ubuntu's Clang 18 as the target kernel compiler.
+The previous diagnostic failed in `io_uring/io_uring.c:io_issue_sqe`
+because LLVM 18.1.3 produced a **2560-byte** stack frame while the
+kernel required **2048 bytes**, triggering `-Werror,-Wframe-larger-than`.
+That result is evidence of a real toolchain incompatibility, not
+permission to disable frame-size checking in production.
+
+The new reproducible compiler **trial** is the official Google
+`clang-r614150`, based on **LLVM 23.0.1** and published in November
+2026. It is pinned to Google prebuilts commit
+`c9ed23e2ba198658b630d4b10e09fa980cd43119`
+(root tree `e78fb6d4e4c88779483d63fca708f43153ba673d`).
+
+`tools/fetch_modern_android_clang.sh` fetches that exact Git revision
+from the official Android Clang prebuilt repository using sparse
+checkout. It refuses an existing output directory, checks the Git
+commit, ensures required LLVM tools exist and checks the major
+Clang version before any kernel build.
+
+The `lf-image-diagnostic.yml` workflow now builds with the pinned
+Android LLVM23 toolchain and normal strict frame-size warnings; **the
+earlier `KCFLAGS=-Wno-error=frame-larger-than` diagnostic exception
+was removed**. A new compile failure must be investigated through
+source patches or a demonstrably compatible release toolchain;
+silencing warnings is not a kernel fix.
+
+**Important distinction:** Android 17 initial platform compiler
+selection and a newer kernel compiler selection are separate. This
+trial does not alter global AOSP Soong/Clang, does not imply matching
+`Module.symvers`/KMI or a working UDFPS/display, and does not turn
+a standalone `Image` into a flashable `boot.img`.
+Final Android product artifacts must include
+`boot.img`, `dtbo.img`, `vendor_boot.img` and `recovery.img`
+with matching kernel, modules, DT and vendor firmware.
