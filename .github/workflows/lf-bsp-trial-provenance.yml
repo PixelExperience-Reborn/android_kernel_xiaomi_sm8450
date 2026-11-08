@@ -1,0 +1,37 @@
+name: Mondrian LF kernel + Qualcomm modules + DT three-repo trial provenance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['audit/**']
+    paths:
+      - 'lf52406-bsp-trial-lock.json'
+      - 'tools/verify_lf_bsp_triplet.py'
+      - 'tests/test_lf_bsp_triplet.py'
+      - '.github/workflows/lf-bsp-trial-provenance.yml'
+  pull_request:
+    paths:
+      - 'lf52406-bsp-trial-lock.json'
+      - 'tools/verify_lf_bsp_triplet.py'
+      - 'tests/test_lf_bsp_triplet.py'
+      - '.github/workflows/lf-bsp-trial-provenance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-provenance-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate candidate contract locally
+        run: python3 -m unittest discover -s tests -v
+      - name: Recheck immutable LF source object IDs and exact contents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/verify_lf_bsp_triplet.py --online
+      - name: Report explicit non-release gates
+        run: |
+          echo 'Immutable three-repository source evidence only. Not built, no selected ACK/toolchain,' >> "$GITHUB_STEP_SUMMARY"
+          echo 'not a certified AOSP 17 QPR1+ kernel; no DTBO, KMI or physical device boot test.' >> "$GITHUB_STEP_SUMMARY"
