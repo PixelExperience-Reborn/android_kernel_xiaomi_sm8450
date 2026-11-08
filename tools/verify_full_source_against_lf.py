@@ -102,8 +102,9 @@ def repair(source: Path, target: Path, modify: bool) -> int:
         # Git ignore rules from the original tree can exclude tracked
         # *symlinks*. Force-add only files proved to belong to upstream.
         run_git(target, "add", "-f", "--", name)
+    restored = index_of(target)
     remaining = [(p, wanted) for p, wanted in upstream.items()
-                 if index_of(target).get(p) != wanted] if different else []
+                 if restored.get(p) != wanted]
     require(not remaining, f"repair failed to restore {len(remaining)} original Git objects")
     print(f"[PASS] recovered {len(different)} missing/modified upstream paths")
     return len(different)
