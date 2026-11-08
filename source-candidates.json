@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "target": {
+    "project": "PixelExperience-Reborn",
+    "android_base": "AOSP 17",
+    "device": "mondrian",
+    "soc": "SM8475",
+    "platform": "taro",
+    "kernel_branch": "unselected",
+    "build_proven": false,
+    "boot_proven": false
+  },
+  "references": [
+    {
+      "role": "oem_kernel",
+      "repository": "MiCode/Xiaomi_Kernel_OpenSource",
+      "ref": "mondrian-s-oss",
+      "source_tree_sha": "989b27aa8391a2ede9b067b53877c4c3343955fe",
+      "kernel_version": "5.10.81",
+      "classification": "incomplete_untested_reference"
+    },
+    {
+      "role": "modern_kernel_reference",
+      "repository": "LineageOS/android_kernel_xiaomi_sm8450",
+      "ref": "lineage-24.0",
+      "source_tree_sha": "eff4b40407a1b6f1b1ab84554cbb540bcb495175",
+      "kernel_version": "5.10.269",
+      "classification": "read_only_compatibility_reference"
+    },
+    {
+      "role": "module_reference",
+      "repository": "LineageOS/android_kernel_xiaomi_sm8450-modules",
+      "ref": "lineage-24.0",
+      "source_tree_sha": "3b30ba7df6608c97c0ba2d55d679a6b5987c4c66",
+      "classification": "read_only_compatibility_reference"
+    },
+    {
+      "role": "devicetree_reference",
+      "repository": "LineageOS/android_kernel_xiaomi_sm8450-devicetrees",
+      "ref": "lineage-24.0",
+      "source_tree_sha": "2e649a7f3e762903eedad43d8256b91e28b512d8",
+      "classification": "read_only_compatibility_reference"
+    }
+  ],
+  "selected_kernel_source": null,
+  "selected_module_source": null,
+  "selected_devicetree_source": null,
+  "selected_toolchain": null,
+  "qualified_firmware": null,
+  "gates": {
+    "license_history": false,
+    "source_completeness": false,
+    "upstream_security": false,
+    "compiler": false,
+    "kmi": false,
+    "modules": false,
+    "devicetrees": false,
+    "touch": false,
+    "udfps": false,
+    "boot": false,
+    "qpr_support": false
+  },
+  "excluded": [
+    "FM radio",
+    "ROM-specific LineageOS product dependencies",
+    "unverified binary modules",
+    "test AVB keys"
+  ]
+}
