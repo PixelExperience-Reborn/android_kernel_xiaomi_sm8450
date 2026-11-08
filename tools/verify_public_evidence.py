@@ -23,7 +23,7 @@ REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
 def git_blob_sha(raw):
-    header = b"blob " + str(len(raw)).encode("ascii") + b"\\0"
+    header = b"blob " + str(len(raw)).encode("ascii") + bytes([0])
     return hashlib.sha1(header + raw).hexdigest()
 
 
@@ -78,7 +78,7 @@ def load_manifest(root=ROOT):
         if not SHA.fullmatch(f["blob_sha"]):
             raise ValueError(f"Invalid Git blob SHA: {f['path']}")
         path = f["path"]
-        if path.startswith("/") or ".." in Path(path).parts or "\\\\" in path:
+        if path.startswith("/") or ".." in Path(path).parts or chr(92) in path:
             raise ValueError(f"Unsafe path: {path}")
         if not f.get("must_contain"):
             raise ValueError(f"Missing content assertions: {path}")
