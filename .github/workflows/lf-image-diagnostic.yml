@@ -35,15 +35,26 @@ jobs:
         run: |
           bash tools/try_mondrian_kconfig.sh \
             "$RUNNER_TEMP/msm-kernel" "$RUNNER_TEMP/mondrian-out"
-      - name: Attempt LLVM kernel Image build (no modules / DTBO / boot packaging)
+      - name: Probe LLVM Image compilation past the known 2 KiB stack warning (diagnostic only)
         run: |
-          set -o pipefail
+          set -euo pipefail
+          # LLVM 18.1.3 exceeds CONFIG_FRAME_WARN=2048 in io_uring/io_uring.c.
+          # Keep the -Wframe-larger-than warning visible, but do not turn
+          # this particular warning into an error in this ONE diagnostic job.
+          # NEVER use this KCFLAGS exception for production boot.img,
+          # vendor_boot.img, firmware, modules, KMI or Android17 release.
           make -C "$RUNNER_TEMP/msm-kernel" \
             O="$RUNNER_TEMP/mondrian-out" ARCH=arm64 \
-            LLVM=1 LLVM_IAS=1 -j3 Image 2>&1 | tee "$RUNNER_TEMP/kernel-image.log"
+            LLVM=1 LLVM_IAS=1 -j3 \
+            KCFLAGS=-Wno-error=frame-larger-than \
+            Image 2>&1 | tee "$RUNNER_TEMP/kernel-image.log"
           test -s "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image"
           test -s "$RUNNER_TEMP/mondrian-out/vmlinux"
-          echo '[PASS] ELF and Image exist. NOT a bootable ROM; do not flash.' >> "$GITHUB_STEP_SUMMARY"
+          if grep -Eq 'warning: stack frame size .* exceeds limit' "$RUNNER_TEMP/kernel-image.log"; then
+            echo '[WARNING] LLVM emitted oversized stack frames; NOT eligible for production.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          sha256sum "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image" >> "$GITHUB_STEP_SUMMARY"
+          echo '[PASS] Diagnostic kernel compiler produced ELF/Image; NOT boot.img, dtbo.img or bootable ROM.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload non-flashable build provenance only
         if: always()
         uses: actions/upload-artifact@v4
