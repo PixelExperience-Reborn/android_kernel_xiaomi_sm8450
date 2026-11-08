@@ -18,7 +18,7 @@ class CandidateInventoryTests(unittest.TestCase):
         self.assertEqual(self.cfg["target"]["android_base"], "AOSP 17")
 
     def test_all_reference_roles_have_immutable_tree_sha(self):
-        expected = {"oem_kernel", "modern_kernel_reference", "module_reference", "devicetree_reference"}
+        expected = {"oem_kernel", "controller_vendor_touch", "modern_kernel_reference", "module_reference", "devicetree_reference"}
         roles = {s["role"] for s in self.cfg["references"]}
         self.assertEqual(roles, expected)
         for item in self.cfg["references"]:
@@ -39,6 +39,14 @@ class CandidateInventoryTests(unittest.TestCase):
         self.assertEqual(by_role["oem_kernel"]["kernel_version"], "5.10.81")
         self.assertEqual(by_role["modern_kernel_reference"]["kernel_version"], "5.10.269")
         self.assertNotEqual(by_role["oem_kernel"]["source_tree_sha"], by_role["modern_kernel_reference"]["source_tree_sha"])
+
+    def test_goodix_upstream_is_direct_manufacturer_source(self):
+        by_role = {x["role"]: x for x in self.cfg["references"]}
+        touch = by_role["controller_vendor_touch"]
+        self.assertEqual(touch["repository"], "goodix/goodix_ts_berlin")
+        self.assertEqual(touch["license"], "GPL-2.0")
+        self.assertIn("GT9916", touch["notes"])
+        self.assertIn("unverified", touch["notes"])
 
     def test_no_fm_radio_inclusion(self):
         self.assertIn("FM radio", self.cfg["excluded"])
