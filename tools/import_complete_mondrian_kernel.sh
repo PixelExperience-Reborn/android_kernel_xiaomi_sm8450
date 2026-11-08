@@ -29,8 +29,7 @@ if [[ "$(git -C "$SOURCE" rev-parse HEAD)" != "$UPSTREAM_COMMIT" ||
   echo "[FAIL] LF source does not match immutable public commit/tree." >&2
   exit 1
 fi
-if [[ "$(git -C "$DEST" branch --show-current)" !=
-      "audit/a17-mondrian-kernel-bsp-provenance-20261108" ]]; then
+if [[ "$(git -C "$DEST" branch --show-current)" != "audit/a17-mondrian-kernel-bsp-provenance-20261108" ]]; then
   echo "[FAIL] Import must start from reviewed PE kernel audit branch." >&2
   exit 1
 fi
