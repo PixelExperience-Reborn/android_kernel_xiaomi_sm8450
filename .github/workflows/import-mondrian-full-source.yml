@@ -1,0 +1,56 @@
+name: Import actual pinned mondrian kernel source into own PE-Reborn branch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - audit/a17-mondrian-kernel-bsp-provenance-20261108
+    paths:
+      - 'tools/import_complete_mondrian_kernel.sh'
+      - '.github/workflows/import-mondrian-full-source.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import-verified-kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    concurrency:
+      group: pe-reborn-mondrian-full-source-import
+      cancel-in-progress: false
+    steps:
+      - name: Checkout own kernel audit branch (never write to seventeen)
+        uses: actions/checkout@v4
+        with:
+          ref: audit/a17-mondrian-kernel-bsp-provenance-20261108
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Check script syntax and checkout identity
+        run: |
+          set -euo pipefail
+          bash -n tools/import_complete_mondrian_kernel.sh
+          test "$(git branch --show-current)" = "audit/a17-mondrian-kernel-bsp-provenance-20261108"
+          test "$(git remote get-url origin)" = "https://github.com/PixelExperience-Reborn/android_kernel_xiaomi_sm8450" || \
+            echo "checkout is using authenticated origin; remote host/owner checked by checkout"
+      - name: Clone COMPLETE LF mondrian Linux 5.10.269 source snapshot
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --single-branch --branch lineage-24.0 \
+            https://github.com/LF52406/android_kernel_xiaomi_sm8450.git \
+            "$RUNNER_TEMP/lf-mondrian-source"
+          test "$(git -C "$RUNNER_TEMP/lf-mondrian-source" rev-parse HEAD)" = \
+            283772ceb84491fd446e340fd211d45fb9dd9a36
+          test "$(git -C "$RUNNER_TEMP/lf-mondrian-source" rev-parse 'HEAD^{tree}')" = \
+            a621bf4b1939281af398ef5248e86222a9bfdfa3
+          test -L "$RUNNER_TEMP/lf-mondrian-source/arch/arm64/boot/dts/vendor"
+          echo "Source files: $(git -C "$RUNNER_TEMP/lf-mondrian-source" ls-files | wc -l)" >> "$GITHUB_STEP_SUMMARY"
+          du -sh "$RUNNER_TEMP/lf-mondrian-source"
+      - name: Import full source on NEW PE-Reborn branch and push with GitHub token
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          bash tools/import_complete_mondrian_kernel.sh \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/lf-mondrian-source"
+          echo '[PASS] Full Linux source branch: bringup/a17-mondrian-kernel-full-source-20261108' >> "$GITHUB_STEP_SUMMARY"
+          echo '[NOTE] Qualcomm modules/DT/Android17 vendor/AVB remain separate qualification stages' >> "$GITHUB_STEP_SUMMARY"
