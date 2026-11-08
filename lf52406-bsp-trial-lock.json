@@ -154,7 +154,8 @@
       "gki_defconfig",
       "vendor/waipio_GKI.config",
       "vendor/xiaomi_GKI.config",
-      "vendor/mondrian_GKI.config"
+      "vendor/mondrian_GKI.config",
+      "vendor/debugfs.config"
     ],
     "compiler_revision": null,
     "ack_kernel_commit": null,
