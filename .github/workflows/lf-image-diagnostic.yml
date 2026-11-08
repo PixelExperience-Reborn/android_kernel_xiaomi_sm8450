@@ -1,0 +1,56 @@
+name: Mondrian Linux 5.10.269 diagnostic Image compile (NOT flashable)
+
+on:
+  push:
+    branches: ['audit/a17-mondrian-kernel-bsp-provenance-20261108']
+    paths:
+      - '.github/workflows/lf-image-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install temporary diagnostic LLVM and host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            clang lld llvm make bc bison flex libssl-dev libelf-dev dwarves
+          echo 'This system LLVM is NOT a production or KMI-certified toolchain.' >> "$GITHUB_STEP_SUMMARY"
+          clang --version | head -1
+          ld.lld --version | head -1
+      - name: Fetch exact LF mondrian Linux 5.10.269 worktree
+        run: |
+          git clone --quiet --depth 1 --filter=blob:none --single-branch \
+            --branch lineage-24.0 \
+            https://github.com/LF52406/android_kernel_xiaomi_sm8450.git "$RUNNER_TEMP/msm-kernel"
+          test "$(git -C "$RUNNER_TEMP/msm-kernel" rev-parse HEAD)" = \
+            "283772ceb84491fd446e340fd211d45fb9dd9a36"
+      - name: Generate verified device Kconfig
+        run: |
+          bash tools/try_mondrian_kconfig.sh \
+            "$RUNNER_TEMP/msm-kernel" "$RUNNER_TEMP/mondrian-out"
+      - name: Attempt LLVM kernel Image build (no modules / DTBO / boot packaging)
+        run: |
+          set -o pipefail
+          make -C "$RUNNER_TEMP/msm-kernel" \
+            O="$RUNNER_TEMP/mondrian-out" ARCH=arm64 \
+            LLVM=1 LLVM_IAS=1 -j3 Image 2>&1 | tee "$RUNNER_TEMP/kernel-image.log"
+          test -s "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image"
+          test -s "$RUNNER_TEMP/mondrian-out/vmlinux"
+          echo '[PASS] ELF and Image exist. NOT a bootable ROM; do not flash.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload non-flashable build provenance only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mondrian-image-diagnostic-config
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/mondrian-out/.config
+            ${{ runner.temp }}/kernel-image.log
+          retention-days: 7
