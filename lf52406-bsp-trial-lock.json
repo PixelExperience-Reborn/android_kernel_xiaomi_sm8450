@@ -204,5 +204,21 @@
       "git_blob_sha": "c0145dbb8b319338b8da62309fadb6e68847e548",
       "status": "source_layout_required_for_dtbo"
     }
-  ]
+  ],
+  "diagnostic_android_clang": {
+    "status": "pinned_candidate_pending_strict_kernel_compile",
+    "provider": "Android Open Source Project",
+    "source_repository": "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86",
+    "source_commit_sha": "c9ed23e2ba198658b630d4b10e09fa980cd43119",
+    "source_root_tree_sha": "e78fb6d4e4c88779483d63fca708f43153ba673d",
+    "path": "clang-r614150",
+    "llvm_major": 23,
+    "compiler_version": "23.0.1",
+    "strict_frame_warnings_required": true,
+    "production_approved": false,
+    "qualcomm_module_symvers_compatible": null,
+    "kernel_image_compiled": null,
+    "kernel_runtime_booted": null,
+    "aosp17_platform_clang_unmodified": true
+  }
 }
