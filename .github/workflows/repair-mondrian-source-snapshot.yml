@@ -1,0 +1,63 @@
+name: Recover ignored original LF kernel paths and verify exact 68k Git objects
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - bringup/a17-mondrian-kernel-full-source-20261108
+    paths:
+      - 'tools/verify_full_source_against_lf.py'
+      - '.github/workflows/repair-mondrian-source-snapshot.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  recover-reviewed-upstream-files:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    concurrency:
+      group: pe-reborn-mondrian-full-source-repair
+      cancel-in-progress: false
+    steps:
+      - name: Checkout own full-source branch
+        uses: actions/checkout@v4
+        with:
+          ref: bringup/a17-mondrian-kernel-full-source-20261108
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Clone exact original LF Linux 5.10.269 upstream commit
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --single-branch --branch lineage-24.0 \
+            https://github.com/LF52406/android_kernel_xiaomi_sm8450.git \
+            "$RUNNER_TEMP/lf-original"
+          test "$(git -C "$RUNNER_TEMP/lf-original" rev-parse HEAD)" = \
+            283772ceb84491fd446e340fd211d45fb9dd9a36
+          test "$(git -C "$RUNNER_TEMP/lf-original" rev-parse 'HEAD^{tree}')" = \
+            a621bf4b1939281af398ef5248e86222a9bfdfa3
+      - name: Compare EVERY upstream Git path/mode/blob, recover only missing originals
+        run: |
+          python3 tools/verify_full_source_against_lf.py \
+            --upstream "$RUNNER_TEMP/lf-original" \
+            --target "$GITHUB_WORKSPACE" \
+            --repair
+      - name: Commit exact upstream symlink/missing-file repairs if required
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo '[PASS] Already contains every original upstream Git object' >> "$GITHUB_STEP_SUMMARY"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "kernel(mondrian): recover upstream tracked files ignored during original snapshot"
+            git push --porcelain origin HEAD:refs/heads/bringup/a17-mondrian-kernel-full-source-20261108
+            echo '[PASS] Repaired original source Git paths without overwriting seventeen' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Revalidate entire original source snapshot after repair
+        run: |
+          python3 tools/verify_full_source_against_lf.py \
+            --upstream "$RUNNER_TEMP/lf-original" \
+            --target "$GITHUB_WORKSPACE"
+          python3 tools/check_pe_mondrian_full_source.py
+          echo '[PASS] All 68,756 source file Git object modes/IDs match LF52406 origin' >> "$GITHUB_STEP_SUMMARY"
