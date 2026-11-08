@@ -195,5 +195,14 @@
     "no proprietary firmware import",
     "no test AVB keys",
     "no write to default seventeen branches"
+  ],
+  "source_links": [
+    {
+      "role": "kernel",
+      "path": "arch/arm64/boot/dts/vendor",
+      "target": "../../../../../sm8450-devicetrees",
+      "git_blob_sha": "c0145dbb8b319338b8da62309fadb6e68847e548",
+      "status": "source_layout_required_for_dtbo"
+    }
   ]
 }
