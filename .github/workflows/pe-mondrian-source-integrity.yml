@@ -1,0 +1,34 @@
+name: PE-Reborn mondrian real Linux kernel source integrity
+
+on:
+  push:
+    branches:
+      - bringup/a17-mondrian-kernel-full-source-20261108
+  pull_request:
+    paths:
+      - 'arch/**'
+      - 'drivers/**'
+      - 'fs/**'
+      - 'Makefile'
+      - 'build.config.msm.waipio'
+      - 'docs/MONDRIAN_SOURCE_PROVENANCE.md'
+      - 'tools/check_pe_mondrian_full_source.py'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-full-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify complete pinned kernel source, Goodix driver and mondrian Kconfig
+        run: python3 tools/check_pe_mondrian_full_source.py
+      - name: Make source-only result explicit
+        if: success()
+        run: |
+          echo 'Verified real Linux 5.10.269 mondrian kernel sources and immutable upstream Git blobs.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No Qualcomm modules/DTBO/boot image/Android17 build or hardware boot is implied.' >> "$GITHUB_STEP_SUMMARY"
