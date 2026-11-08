@@ -1,0 +1,49 @@
+name: Mondrian LF 5.10.269 real sparse source checkout and KMI preflight
+
+on:
+  push:
+    branches: ['audit/a17-mondrian-kernel-bsp-provenance-20261108']
+    paths:
+      - 'tools/verify_trial_workspace.py'
+      - 'lf52406-bsp-trial-lock.json'
+      - '.github/workflows/lf-bsp-checkout-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clone-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch exact LF kernel, Qualcomm modules and DT sparse checkouts
+        run: |
+          set -euo pipefail
+          mkdir -p workspace/kernel/xiaomi
+          git clone --quiet --depth 1 --filter=blob:none --sparse --branch lineage-24.0 \
+            https://github.com/LF52406/android_kernel_xiaomi_sm8450.git \
+            workspace/kernel/xiaomi/sm8450
+          git -C workspace/kernel/xiaomi/sm8450 sparse-checkout set \
+            arch/arm64/configs android scripts
+          git clone --quiet --depth 1 --filter=blob:none --sparse --branch lineage-24.0 \
+            https://github.com/LF52406/android_kernel_xiaomi_sm8450-modules.git \
+            workspace/kernel/xiaomi/sm8450-modules
+          git -C workspace/kernel/xiaomi/sm8450-modules sparse-checkout set \
+            qcom/opensource/audio-kernel/asoc
+          git clone --quiet --depth 1 --filter=blob:none --sparse --branch lineage-24.0 \
+            https://github.com/LF52406/android_kernel_xiaomi_sm8450-devicetrees.git \
+            workspace/kernel/xiaomi/sm8450-devicetrees
+          git -C workspace/kernel/xiaomi/sm8450-devicetrees sparse-checkout set qcom
+      - name: Verify real worktree HEAD/root tree SHA, Kconfig/KMI and pinned Git blobs
+        run: |
+          python3 tools/verify_trial_workspace.py \
+            --root workspace \
+            --lock lf52406-bsp-trial-lock.json \
+            --report workspace/source-preflight-report.json
+      - name: Summarize findings
+        if: always()
+        run: |
+          echo 'This job tests actual sparse Git worktrees, not a full kernel build.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No compiled Image, vendor modules, KMI acceptance, DTBO or bootable ROM is produced.' >> "$GITHUB_STEP_SUMMARY"
