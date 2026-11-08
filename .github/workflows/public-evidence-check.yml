@@ -1,0 +1,25 @@
+name: Mondrian public BSP Git object verification (read only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['audit/**']
+    paths:
+      - source-candidates.json
+      - reference-evidence.json
+      - tools/verify_public_evidence.py
+      - .github/workflows/public-evidence-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-external-pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Git commits, root trees, blobs and source assertions
+        run: python3 tools/verify_public_evidence.py --online
+        env:
+          GH_TOKEN: ${{ github.token }}
