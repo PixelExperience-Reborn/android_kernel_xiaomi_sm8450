@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "purpose": "Pinned, read-only verification of published external BSP claims; not approval for kernel import or hardware compatibility",
+  "files": [
+    {
+      "role": "oem_kernel",
+      "path": "Makefile",
+      "blob_sha": "1d22e48d2c76728b88c53a09fb148dba1a018e68",
+      "must_contain": [
+        "VERSION = 5",
+        "PATCHLEVEL = 10",
+        "SUBLEVEL = 81"
+      ]
+    },
+    {
+      "role": "oem_kernel",
+      "path": "build.config.msm.mondrian",
+      "blob_sha": "c517be93e7fcf4596b5526cea93d69b7b1e4f74c",
+      "must_contain": [
+        ". ${ROOT_DIR}/common/build.config.common",
+        "BUILD_VENDOR_DLKM=1",
+        "MODULES_LIST_ORDER=\"1\""
+      ]
+    },
+    {
+      "role": "oem_kernel",
+      "path": "modules.list.msm.mondrian",
+      "blob_sha": "1ee612bfd4090af12f88629a66b069eec9192825",
+      "must_contain": [
+        "gh_virt_wdt.ko",
+        "qcom_wdt_core.ko"
+      ],
+      "module_list": {
+        "entries": 106,
+        "unique": 104,
+        "duplicates": [
+          "gh_virt_wdt.ko",
+          "qcom_wdt_core.ko"
+        ]
+      }
+    },
+    {
+      "role": "controller_vendor_touch",
+      "path": "goodix_brl_spi.c",
+      "blob_sha": "3b42191d2dc4f36579aea14978a25a0703cbe4c2",
+      "must_contain": [
+        ".compatible = \"goodix,brl-d\""
+      ],
+      "must_not_contain": [
+        "goodix,gt9916S"
+      ]
+    },
+    {
+      "role": "modern_kernel_reference",
+      "path": "drivers/input/touchscreen/goodix_berlin_driver/goodix_brl_spi.c",
+      "blob_sha": "74333fcacfccc65939f4cb8ed87ec408127120ac",
+      "must_contain": [
+        ".compatible = \"goodix,gt9916S\""
+      ]
+    },
+    {
+      "role": "devicetree_reference",
+      "path": "qcom/mondrian-sm8475.dtsi",
+      "blob_sha": "59cb230a704b67b3f8800682937bbec2a9e09f9c",
+      "must_contain": [
+        "compatible = \"goodix,gt9916S\"",
+        "spi-max-frequency = <15000000>",
+        "goodix,irq-gpio = <&tlmm 21 GPIO_TRANSITORY>",
+        "goodix,reset-gpio = <&tlmm 20 GPIO_ACTIVE_HIGH>",
+        "goodix,firmware-name = \"goodix_firmware_m11a.bin\"",
+        "goodix,config-name = \"goodix_cfg_group_m11a.bin\"",
+        "goodix,support-thp-fw",
+        "compatible = \"goodix,fingerprint\""
+      ]
+    },
+    {
+      "role": "devicetree_reference",
+      "path": "qcom/display/display/mondrian-sde-display-mtp.dtsi",
+      "blob_sha": "8f53907e4cb6b5b22906dd2ff356a547b55dc374",
+      "must_contain": [
+        "dsi-panel-m11a-42-02-0a-dsc-cmd.dtsi"
+      ]
+    },
+    {
+      "role": "devicetree_reference",
+      "path": "qcom/Makefile",
+      "blob_sha": "44e2f2371a4e1667408a7441c8d431fd0d81e51b",
+      "must_contain": [
+        "mondrian-sm8475-pm8008-overlay.dtbo-base := cape.dtb cape-v2.dtb capep.dtb"
+      ]
+    },
+    {
+      "role": "devicetree_reference",
+      "path": "qcom/display/Kbuild",
+      "blob_sha": "cf5c2fa8ff025fb7ad99adc6175dd75242414190",
+      "must_contain": [
+        "display/mondrian-sde-display-mtp-overlay.dtbo"
+      ]
+    },
+    {
+      "role": "devicetree_reference",
+      "path": "qcom/camera/config/waipio.mk",
+      "blob_sha": "294846140b079c872d64d507680a9e2d2302254e",
+      "must_contain": [
+        "mondrian-sm8475-camera-sensor.dtbo"
+      ]
+    },
+    {
+      "role": "module_reference",
+      "path": "qcom/opensource/audio-kernel/asoc/Kbuild",
+      "blob_sha": "81667bef6787a567063a8b21b78379f794f9bc29",
+      "must_contain": [
+        "CONFIG_TARGET_PRODUCT_MONDRIAN"
+      ]
+    }
+  ]
+}
