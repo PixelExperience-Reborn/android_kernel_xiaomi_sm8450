@@ -7,16 +7,15 @@ PE-Reborn source platform remains official **AOSP 17**, not another custom ROM.
 
 ## Verified reference snapshots (2026-11-08)
 
-| Purpose | Public reference | Git tree SHA | Facts / caveats |
+| Purpose | Public reference | Git commit SHA / Git root tree SHA | Facts / caveats |
 | --- | --- | --- | --- |
-| Xiaomi OEM disclosure | [mondrian-s-oss](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/mondrian-s-oss) | `989b27aa8391a2ede9b067b53877c4c3343955fe` | `Makefile`: **5.10.81**; `build.config.msm.mondrian`, `modules.list.msm.mondrian`, `arch/arm64/configs/vendor/mondrian_GKI.config` exist. **Not an independently verified complete build**. |
-| Goodix controller manufacturer | [goodix/goodix_ts_berlin](https://github.com/goodix/goodix_ts_berlin/tree/master) | `6c4b81587d43cf4ebf59cc63fe2916d77e4e8ce2` | **GPL-2.0**. Manufacturer supports **GT9916 (BerlinD)** and SPI; contains firmware update, ESD-related modules and gesture sources. **Not a validated mondrian driver yet.** |
-| Later kernel compatibility reference | [LineageOS/android_kernel_xiaomi_sm8450](https://github.com/LineageOS/android_kernel_xiaomi_sm8450/tree/lineage-24.0) | `eff4b40407a1b6f1b1ab84554cbb540bcb495175` | `Makefile`: **5.10.269**; contains kernel-side Goodix Berlin driver and updated security. **Not the PE kernel source**. |
-| Qualcomm external module inventory reference | [LineageOS/android_kernel_xiaomi_sm8450-modules](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-modules/tree/lineage-24.0) | `3b30ba7df6608c97c0ba2d55d679a6b5987c4c66` | Thousands of external Qualcomm module sources incl. display, camera, audio, WLAN. **Not yet audited, selected or copied**. |
-| Device tree / DTBO inventory reference | [LineageOS/android_kernel_xiaomi_sm8450-devicetrees](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-devicetrees/tree/lineage-24.0) | `2e649a7f3e762903eedad43d8256b91e28b512d8` | mondrian SM8475, panel M11A, Goodix SPI touch node. **Not yet audited, selected or copied**. |
+| Xiaomi OEM disclosure | [mondrian-s-oss](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/mondrian-s-oss) | `989b27aa8391a2ede9b067b53877c4c3343955fe` / `cc1d5e5fc0f576c3ba3a7a8497de53f6e6023dc8` | `Makefile`: **5.10.81**; `build.config.msm.mondrian`, `modules.list.msm.mondrian`, `arch/arm64/configs/vendor/mondrian_GKI.config` exist. **Not an independently verified complete build**. |
+| Goodix controller manufacturer | [goodix/goodix_ts_berlin](https://github.com/goodix/goodix_ts_berlin/tree/master) | `6c4b81587d43cf4ebf59cc63fe2916d77e4e8ce2` / `1697c91c7161c3ea89ed03b3b4e02c9211b55cc6` | **GPL-2.0-only** (per source SPDX). Manufacturer supports **GT9916 (BerlinD)** and SPI; contains firmware update, ESD-related modules and gesture sources. **Not a validated mondrian driver yet.** |
+| Later kernel compatibility reference | [LineageOS/android_kernel_xiaomi_sm8450](https://github.com/LineageOS/android_kernel_xiaomi_sm8450/tree/lineage-24.0) | `eff4b40407a1b6f1b1ab84554cbb540bcb495175` / `c8b48084c5d0f426b81080fd0b0d506d82497a29` | `Makefile`: **5.10.269**; contains kernel-side Goodix Berlin driver and updated security. **Not the PE kernel source**. |
+| Qualcomm external module inventory reference | [LineageOS/android_kernel_xiaomi_sm8450-modules](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-modules/tree/lineage-24.0) | `3b30ba7df6608c97c0ba2d55d679a6b5987c4c66` / `decc79698113e01aaed861f169ab1f8929433bc2` | Thousands of external Qualcomm module sources incl. display, camera, audio, WLAN. **Not yet audited, selected or copied**. |
+| Device tree / DTBO inventory reference | [LineageOS/android_kernel_xiaomi_sm8450-devicetrees](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-devicetrees/tree/lineage-24.0) | `2e649a7f3e762903eedad43d8256b91e28b512d8` / `791739007d79dc9e2053bdd074a85f7bd5ff0c31` | mondrian SM8475, panel M11A, Goodix SPI touch node. **Not yet audited, selected or copied**. |
 
-The SHA values above identify **Git tree snapshots**, not source-package checksums or
-device firmware hashes. Before import, pin **commit SHA**, validate history,
+The first SHA in each pair is the immutable **Git commit** and the second is its **root Git tree**. Earlier documentation incorrectly called the commit SHA a tree SHA; corrected against GitHub's commit metadata on 2026-11-08. Neither identifies device firmware or a complete OEM BSP package. Before import, pin **commit SHA**, validate history,
 license notices, redistribution terms and all dependent subprojects. The
 source lists are evidence of historical contents, **not approval to merge**.
 
@@ -137,3 +136,38 @@ Source: https://source.android.com/docs/core/architecture/kernel/android-common
 **Do not** merge or run these prospective source changes merely to make a
 kernel version look newer. Non-reviewed `vendor.lineage.*` dependencies
 are excluded from the independent PE-Reborn platform. FM radio excluded.
+
+
+## Follow-up: executable published-source contracts (2026-11-08)
+
+`source-candidates.json` schema v2 now records commit and root-tree hashes separately.
+`reference-evidence.json` pins **11 specific source files by Git blob SHA**.
+To audit their actual immutable public contents, run:
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 tools/verify_public_evidence.py --online
+```
+
+Host-only unit tests check the structure and reject unapproved release gates.
+The `--online` command also downloads read-only public source files,
+verifies Git blob SHA, their parent commit/tree IDs, and concrete snippets.
+Neither command compiles a kernel, validates Qualcomm KMI or tests physical hardware.
+
+**Confirmed integration risk:** Goodix's manufacturer SPI match table includes
+`goodix,brl-d`, but **does not include** `goodix,gt9916S`. The mondrian
+`qcom/mondrian-sm8475.dtsi` uses `goodix,gt9916S` and the later Qualcomm
+kernel driver includes that exact compatible string. The manufacturer's
+driver cannot be assumed to bind to the existing DT node without a reviewed
+driver/DT adaptation and firmware/ESD/IRQ regression testing.
+
+**OEM module list:** `modules.list.msm.mondrian` contains **106 ordered
+entries** but **104 unique module names**: `gh_virt_wdt.ko` and
+`qcom_wdt_core.ko` appear twice each. Do **not** blindly copy or silently
+deduplicate this load-order list. Resolve dependencies, stage placement,
+module aliases, symbol exports and the actual generated module list first.
+
+For panel, touch, camera and core DTBO context, see
+`docs/MONDRIAN_BSP_DEPENDENCY_CONTRACT.md`. This source evidence is not a
+license or approval to redistribute vendor firmware or combine unrelated
+kernel/module baselines.
