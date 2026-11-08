@@ -62,7 +62,7 @@ def validate_lock(lock):
     for key in ("compiler_revision", "ack_kernel_commit", "build_tools_commit", "host_dtc_revision"):
         require(layout[key] is None, f"untested {key} must remain unselected")
     expected = {"vendor/waipio_GKI.config", "vendor/xiaomi_GKI.config",
-                "vendor/mondrian_GKI.config", "gki_defconfig"}
+                "vendor/mondrian_GKI.config", "vendor/debugfs.config", "gki_defconfig"}
     require(set(layout["device_config_fragments"]) == expected, "defconfig fragment drift")
     conflict = lock["known_conflicts"]
     require(conflict["standalone_qualcomm_boot_header"] == 3 and
