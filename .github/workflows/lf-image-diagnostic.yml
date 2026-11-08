@@ -1,10 +1,11 @@
-name: Mondrian Linux 5.10.269 diagnostic Image compile (NOT flashable)
+name: Mondrian modern Android Clang r614150 / LLVM23 strict kernel diagnostic
 
 on:
   push:
     branches: ['audit/a17-mondrian-kernel-bsp-provenance-20261108']
     paths:
       - '.github/workflows/lf-image-diagnostic.yml'
+      - 'tools/fetch_modern_android_clang.sh'
   workflow_dispatch:
 
 permissions:
@@ -16,14 +17,26 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Install temporary diagnostic LLVM and host build dependencies
+      - name: Install host build dependencies (NOT a host Clang compiler)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            clang lld llvm make bc bison flex libssl-dev libelf-dev dwarves
-          echo 'This system LLVM is NOT a production or KMI-certified toolchain.' >> "$GITHUB_STEP_SUMMARY"
-          clang --version | head -1
-          ld.lld --version | head -1
+            make bc bison flex libssl-dev libelf-dev dwarves
+      - name: Fetch pinned official Android Clang r614150 (LLVM 23) from Google
+        run: |
+          bash -n tools/fetch_modern_android_clang.sh
+          bash tools/fetch_modern_android_clang.sh "$RUNNER_TEMP/android-clang"
+          echo "$RUNNER_TEMP/android-clang/clang-r614150/bin" >> "$GITHUB_PATH"
+      - name: Enforce modern compiler identity; never use Ubuntu system Clang
+        run: |
+          set -euo pipefail
+          actual="$(readlink -f "$(command -v clang)")"
+          test "$actual" = "$RUNNER_TEMP/android-clang/clang-r614150/bin/clang"
+          clang --version | head -n1 | grep -E 'clang version 23[.]'
+          ld.lld --version | head -n1
+          git -C "$RUNNER_TEMP/android-clang" rev-parse HEAD | \
+            grep -Fx c9ed23e2ba198658b630d4b10e09fa980cd43119
+          echo 'Pinned official AOSP Clang r614150 (LLVM 23), not distro LLVM18.' >> "$GITHUB_STEP_SUMMARY"
       - name: Fetch exact LF mondrian Linux 5.10.269 worktree
         run: |
           git clone --quiet --depth 1 --filter=blob:none --single-branch \
@@ -31,22 +44,19 @@ jobs:
             https://github.com/LF52406/android_kernel_xiaomi_sm8450.git "$RUNNER_TEMP/msm-kernel"
           test "$(git -C "$RUNNER_TEMP/msm-kernel" rev-parse HEAD)" = \
             "283772ceb84491fd446e340fd211d45fb9dd9a36"
-      - name: Generate verified device Kconfig
+      - name: Generate verified device Kconfig with pinned Android Clang 23
         run: |
+          export LLVM=1 LLVM_IAS=1
           bash tools/try_mondrian_kconfig.sh \
             "$RUNNER_TEMP/msm-kernel" "$RUNNER_TEMP/mondrian-out"
-      - name: Probe LLVM Image compilation past the known 2 KiB stack warning (diagnostic only)
+      - name: Strict full Image compilation with Android Clang 23 (no bypasses)
         run: |
           set -euo pipefail
-          # LLVM 18.1.3 exceeds CONFIG_FRAME_WARN=2048 in io_uring/io_uring.c.
-          # Keep the -Wframe-larger-than warning visible, but do not turn
-          # this particular warning into an error in this ONE diagnostic job.
-          # NEVER use this KCFLAGS exception for production boot.img,
-          # vendor_boot.img, firmware, modules, KMI or Android17 release.
+          # Real source compiler test. -Werror and CONFIG_FRAME_WARN stay ON.
+          # A resulting Image is an input to Android boot.img, NOT final ROM output.
           make -C "$RUNNER_TEMP/msm-kernel" \
             O="$RUNNER_TEMP/mondrian-out" ARCH=arm64 \
             LLVM=1 LLVM_IAS=1 -j3 \
-            KCFLAGS=-Wno-error=frame-larger-than \
             Image 2>&1 | tee "$RUNNER_TEMP/kernel-image.log"
           test -s "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image"
           test -s "$RUNNER_TEMP/mondrian-out/vmlinux"
@@ -64,4 +74,5 @@ jobs:
           path: |
             ${{ runner.temp }}/mondrian-out/.config
             ${{ runner.temp }}/kernel-image.log
+          include-hidden-files: true
           retention-days: 7
