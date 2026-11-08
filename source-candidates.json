@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "target": {
     "project": "PixelExperience-Reborn",
     "android_base": "AOSP 17",
@@ -15,40 +15,45 @@
       "role": "oem_kernel",
       "repository": "MiCode/Xiaomi_Kernel_OpenSource",
       "ref": "mondrian-s-oss",
-      "source_tree_sha": "989b27aa8391a2ede9b067b53877c4c3343955fe",
+      "source_tree_sha": "cc1d5e5fc0f576c3ba3a7a8497de53f6e6023dc8",
       "kernel_version": "5.10.81",
-      "classification": "incomplete_untested_reference"
+      "classification": "incomplete_untested_reference",
+      "source_commit_sha": "989b27aa8391a2ede9b067b53877c4c3343955fe"
     },
     {
       "role": "controller_vendor_touch",
       "repository": "goodix/goodix_ts_berlin",
       "ref": "master",
-      "source_tree_sha": "6c4b81587d43cf4ebf59cc63fe2916d77e4e8ce2",
-      "license": "GPL-2.0",
+      "source_tree_sha": "1697c91c7161c3ea89ed03b3b4e02c9211b55cc6",
+      "license": "GPL-2.0-only",
       "classification": "incomplete_untested_reference",
-      "notes": "Goodix official Berlin driver supports GT9916 and SPI, but current mondrian DTS compatible string and firmware/ESD integration are unverified"
+      "notes": "Goodix official Berlin driver supports GT9916 and SPI, but current mondrian DTS compatible string and firmware/ESD integration are unverified",
+      "source_commit_sha": "6c4b81587d43cf4ebf59cc63fe2916d77e4e8ce2"
     },
     {
       "role": "modern_kernel_reference",
       "repository": "LineageOS/android_kernel_xiaomi_sm8450",
       "ref": "lineage-24.0",
-      "source_tree_sha": "eff4b40407a1b6f1b1ab84554cbb540bcb495175",
+      "source_tree_sha": "c8b48084c5d0f426b81080fd0b0d506d82497a29",
       "kernel_version": "5.10.269",
-      "classification": "read_only_compatibility_reference"
+      "classification": "read_only_compatibility_reference",
+      "source_commit_sha": "eff4b40407a1b6f1b1ab84554cbb540bcb495175"
     },
     {
       "role": "module_reference",
       "repository": "LineageOS/android_kernel_xiaomi_sm8450-modules",
       "ref": "lineage-24.0",
-      "source_tree_sha": "3b30ba7df6608c97c0ba2d55d679a6b5987c4c66",
-      "classification": "read_only_compatibility_reference"
+      "source_tree_sha": "decc79698113e01aaed861f169ab1f8929433bc2",
+      "classification": "read_only_compatibility_reference",
+      "source_commit_sha": "3b30ba7df6608c97c0ba2d55d679a6b5987c4c66"
     },
     {
       "role": "devicetree_reference",
       "repository": "LineageOS/android_kernel_xiaomi_sm8450-devicetrees",
       "ref": "lineage-24.0",
-      "source_tree_sha": "2e649a7f3e762903eedad43d8256b91e28b512d8",
-      "classification": "read_only_compatibility_reference"
+      "source_tree_sha": "791739007d79dc9e2053bdd074a85f7bd5ff0c31",
+      "classification": "read_only_compatibility_reference",
+      "source_commit_sha": "2e649a7f3e762903eedad43d8256b91e28b512d8"
     }
   ],
   "selected_kernel_source": null,
@@ -74,5 +79,36 @@
     "ROM-specific LineageOS product dependencies",
     "unverified binary modules",
     "test AVB keys"
-  ]
+  ],
+  "hardware_reference_contract": {
+    "touch": {
+      "device_tree_repository": "LineageOS/android_kernel_xiaomi_sm8450-devicetrees",
+      "device_tree_path": "qcom/mondrian-sm8475.dtsi",
+      "spi_compatible": "goodix,gt9916S",
+      "manufacturer_driver_compatible": "goodix,brl-d",
+      "known_match": false,
+      "manufacturer_port_approved": false,
+      "firmware_name": "goodix_firmware_m11a.bin",
+      "config_name": "goodix_cfg_group_m11a.bin",
+      "measured_controller_id": null,
+      "measured_firmware_version": null,
+      "measured_panel_revision": null
+    },
+    "oem_modules": {
+      "repository": "MiCode/Xiaomi_Kernel_OpenSource",
+      "path": "modules.list.msm.mondrian",
+      "entries": 106,
+      "unique": 104,
+      "duplicates": [
+        "gh_virt_wdt.ko",
+        "qcom_wdt_core.ko"
+      ],
+      "resolved": false
+    },
+    "android17_qpr1_plus": {
+      "gki_5_10_officially_supported": false,
+      "supported_kernel_selected": false,
+      "vendor_kmi_verified": false
+    }
+  }
 }
