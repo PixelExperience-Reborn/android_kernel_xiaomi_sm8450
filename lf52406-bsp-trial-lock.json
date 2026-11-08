@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "project": "PixelExperience-Reborn",
+  "device": "mondrian",
+  "soc": "SM8475",
+  "android": "AOSP 17",
+  "candidate": "LF52406 three-repository BSP working reference",
+  "status": "TRIAL_SOURCE_ONLY_NOT_SELECTED_FOR_RELEASE",
+  "sources": [
+    {
+      "role": "kernel",
+      "repository": "LF52406/android_kernel_xiaomi_sm8450",
+      "source_branch": "lineage-24.0",
+      "commit_sha": "283772ceb84491fd446e340fd211d45fb9dd9a36",
+      "root_tree_sha": "a621bf4b1939281af398ef5248e86222a9bfdfa3",
+      "materialized_in_pe": false,
+      "files": [
+        {
+          "path": "Makefile",
+          "blob_sha": "ac6ebd447d9518391afa8bd91587fed042f7cec4",
+          "contains": [
+            "VERSION = 5",
+            "PATCHLEVEL = 10",
+            "SUBLEVEL = 269"
+          ]
+        },
+        {
+          "path": "build.config.msm.waipio",
+          "blob_sha": "82e031fe63b1cbb7d05c6933c406db3a67fd4738",
+          "contains": [
+            "BOOT_IMAGE_HEADER_VERSION=3",
+            "BUILD_VENDOR_DLKM=1",
+            ". ${ROOT_DIR}/common/build.config.common"
+          ]
+        },
+        {
+          "path": "build.config.msm.gki",
+          "blob_sha": "77f68c7b56be1b3cf652eb392393a0634ec899f7",
+          "contains": [
+            "KMI_SYMBOL_LIST=android/abi_gki_aarch64_qcom",
+            "DEFCONFIG=\"gki_defconfig\""
+          ]
+        },
+        {
+          "path": "build.config.msm.common",
+          "blob_sha": "bb752bc4ba126a9f1b6e0bfc931d1a7e2187c1d3",
+          "contains": [
+            "compile_external_dtc",
+            "make_dtbo_img",
+            "prepare_vendor_dlkm"
+          ]
+        },
+        {
+          "path": "arch/arm64/configs/vendor/waipio_GKI.config",
+          "blob_sha": "193e6db076a40c13da25a12cc64667fc97eda60a",
+          "contains": [
+            "CONFIG_ARCH_CAPE=y",
+            "CONFIG_TOUCHSCREEN_GOODIX_BRL=m"
+          ]
+        },
+        {
+          "path": "arch/arm64/configs/vendor/xiaomi_GKI.config",
+          "blob_sha": "08f9ecde7e8342fbaf3d6d3d11fa36b24507b7d8",
+          "contains": [
+            "CONFIG_FINGERPRINT_GOODIX_TEE=m",
+            "CONFIG_BUILD_ARM64_DT_OVERLAY=y"
+          ]
+        },
+        {
+          "path": "arch/arm64/configs/vendor/mondrian_GKI.config",
+          "blob_sha": "0eab40c4e8dfc69ed7ddcf2f9e45da24a1d9e182",
+          "contains": [
+            "CONFIG_EROFS_FS=y",
+            "CONFIG_EROFS_FS_ZIP=y"
+          ]
+        },
+        {
+          "path": "modules.list.msm.waipio",
+          "blob_sha": "37f0921dfef062727418b1de230e5b658df6c5ce",
+          "contains": [
+            "gh_virt_wdt.ko",
+            "qcom_wdt_core.ko",
+            "sched-walt.ko"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "modules",
+      "repository": "LF52406/android_kernel_xiaomi_sm8450-modules",
+      "source_branch": "lineage-24.0",
+      "commit_sha": "91cdb1347970ae98291986926eb16bf1b172138e",
+      "root_tree_sha": "3a09118a08342f6b0118373f340d759ddfadb133",
+      "materialized_in_pe": false,
+      "files": [
+        {
+          "path": "qcom/opensource/audio-kernel/asoc/Kbuild",
+          "blob_sha": "81667bef6787a567063a8b21b78379f794f9bc29",
+          "contains": [
+            "CONFIG_TARGET_PRODUCT_MONDRIAN"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "devicetrees",
+      "repository": "LF52406/android_kernel_xiaomi_sm8450-devicetrees",
+      "source_branch": "lineage-24.0",
+      "commit_sha": "99f1330d8dce0c80de5a19f425d0a118b2eb7fe3",
+      "root_tree_sha": "fcbd44856a59364a8af9ebc72546ea8ecab0f77b",
+      "materialized_in_pe": false,
+      "files": [
+        {
+          "path": "qcom/mondrian-sm8475.dtsi",
+          "blob_sha": "59cb230a704b67b3f8800682937bbec2a9e09f9c",
+          "contains": [
+            "goodix,gt9916S",
+            "goodix_firmware_m11a.bin",
+            "goodix,fingerprint"
+          ]
+        },
+        {
+          "path": "qcom/Makefile",
+          "blob_sha": "44e2f2371a4e1667408a7441c8d431fd0d81e51b",
+          "contains": [
+            "mondrian-sm8475-pm8008-overlay.dtbo-base := cape.dtb cape-v2.dtb capep.dtb"
+          ]
+        },
+        {
+          "path": "qcom/display/Kbuild",
+          "blob_sha": "cf5c2fa8ff025fb7ad99adc6175dd75242414190",
+          "contains": [
+            "display/mondrian-sde-display-mtp-overlay.dtbo"
+          ]
+        },
+        {
+          "path": "qcom/camera/config/waipio.mk",
+          "blob_sha": "294846140b079c872d64d507680a9e2d2302254e",
+          "contains": [
+            "mondrian-sm8475-camera-sensor.dtbo"
+          ]
+        }
+      ]
+    }
+  ],
+  "build_layout": {
+    "ack_checkout": "common",
+    "msm_kernel_checkout": "msm-kernel",
+    "external_modules_checkout": "kernel/xiaomi/sm8450-modules",
+    "external_dt_checkout": "kernel/xiaomi/sm8450-devicetrees",
+    "external_dtc_checkout": "external/dtc",
+    "kernel_build_config": "msm-kernel/build.config.msm.waipio",
+    "device_config_fragments": [
+      "gki_defconfig",
+      "vendor/waipio_GKI.config",
+      "vendor/xiaomi_GKI.config",
+      "vendor/mondrian_GKI.config"
+    ],
+    "compiler_revision": null,
+    "ack_kernel_commit": null,
+    "build_tools_commit": null,
+    "host_dtc_revision": null
+  },
+  "known_conflicts": {
+    "standalone_qualcomm_boot_header": 3,
+    "rom_target_board_header_reference": 4,
+    "boot_header_layout_resolved": false,
+    "goodix_manufacturer_dt_compatible": "goodix,brl-d",
+    "mondrian_dt_compatible": "goodix,gt9916S",
+    "touch_driver_replacement_approved": false
+  },
+  "android17_policy": {
+    "gki_5_10_allowed_on_initial_android17": true,
+    "gki_5_10_supported_on_qpr1_plus": false,
+    "forward_kernel_migration_plan_required": true
+  },
+  "gates": {
+    "source_metadata_checked": false,
+    "three_repos_checked_out": false,
+    "ack_and_toolchain_checked_out": false,
+    "defconfig_generated": false,
+    "kernel_elf_compiled": false,
+    "external_modules_compiled": false,
+    "dtbo_compiled": false,
+    "kmi_and_module_symvers_checked": false,
+    "kernel_images_packaged": false,
+    "aosp17_soong_built": false,
+    "physical_boot_tested": false,
+    "full_qpr_supported": false
+  },
+  "explicit_exclusions": [
+    "no FM radio in PE device product",
+    "no third-party ROM product inheritance",
+    "no proprietary firmware import",
+    "no test AVB keys",
+    "no write to default seventeen branches"
+  ]
+}
