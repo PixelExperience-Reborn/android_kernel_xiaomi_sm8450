@@ -10,6 +10,7 @@ PE-Reborn source platform remains official **AOSP 17**, not another custom ROM.
 | Purpose | Public reference | Git tree SHA | Facts / caveats |
 | --- | --- | --- | --- |
 | Xiaomi OEM disclosure | [mondrian-s-oss](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/mondrian-s-oss) | `989b27aa8391a2ede9b067b53877c4c3343955fe` | `Makefile`: **5.10.81**; `build.config.msm.mondrian`, `modules.list.msm.mondrian`, `arch/arm64/configs/vendor/mondrian_GKI.config` exist. **Not an independently verified complete build**. |
+| Goodix controller manufacturer | [goodix/goodix_ts_berlin](https://github.com/goodix/goodix_ts_berlin/tree/master) | `6c4b81587d43cf4ebf59cc63fe2916d77e4e8ce2` | **GPL-2.0**. Manufacturer supports **GT9916 (BerlinD)** and SPI; contains firmware update, ESD-related modules and gesture sources. **Not a validated mondrian driver yet.** |
 | Later kernel compatibility reference | [LineageOS/android_kernel_xiaomi_sm8450](https://github.com/LineageOS/android_kernel_xiaomi_sm8450/tree/lineage-24.0) | `eff4b40407a1b6f1b1ab84554cbb540bcb495175` | `Makefile`: **5.10.269**; contains kernel-side Goodix Berlin driver and updated security. **Not the PE kernel source**. |
 | Qualcomm external module inventory reference | [LineageOS/android_kernel_xiaomi_sm8450-modules](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-modules/tree/lineage-24.0) | `3b30ba7df6608c97c0ba2d55d679a6b5987c4c66` | Thousands of external Qualcomm module sources incl. display, camera, audio, WLAN. **Not yet audited, selected or copied**. |
 | Device tree / DTBO inventory reference | [LineageOS/android_kernel_xiaomi_sm8450-devicetrees](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-devicetrees/tree/lineage-24.0) | `2e649a7f3e762903eedad43d8256b91e28b512d8` | mondrian SM8475, panel M11A, Goodix SPI touch node. **Not yet audited, selected or copied**. |
@@ -64,6 +65,41 @@ panel power state, and repeat tests with charger unplugged/plugged,
 60/120 Hz, screen-off resume and a known-good vendor firmware baseline.
 Record firmware/controller and panel revisions. No automated driver upgrade
 without reproducible evidence, source diff review and hardware regression.
+
+## Direct touch-driver candidate independent of custom ROMs
+
+The actual controller manufacturer publishes its own
+[Goodix Berlin Linux driver](https://github.com/goodix/goodix_ts_berlin)
+with source files `goodix_brl_spi.c`, `goodix_brl_fwupdate.c`,
+`goodix_ts_core.c`, `goodix_ts_gesture.c` and
+`goodix_ts_inspect.c`. The upstream
+[porting guide](https://github.com/goodix/goodix_ts_berlin/blob/master/docs/Porting_Guide.md)
+explicitly maps **GT9916 to BerlinD** with SPI support. This is a
+**more direct origin** for driver analysis than a ROM fork.
+
+**Important incompatibility to audit:** the manufacturer guide documents
+the generic DT `compatible = "goodix,brl-d"` for GT9916, whereas the
+read-only mondrian device tree declares `goodix,gt9916S`. Never assume
+one automatically matches the other: verify the exact driver of_match table,
+chip revision/protocol, panel geometry and power/reset/IRQ contract.
+Firmware blobs `goodix_firmware_m11a.bin` and
+`goodix_cfg_group_m11a.bin` are separate versioned artifacts; a new
+driver with a mismatched firmware/config can **create** ghost-touch faults
+instead of fixing them.
+
+The current mainline Linux Goodix Berlin implementation is another
+reference, but its in-tree documentation/source explicitly notes missing
+ESD management, firmware/config flashing and gesture handling. Those
+features matter for a phone's actual input/suspend behavior. Do not
+replace a functioning vendor driver with the simpler mainline driver
+until this gap has been resolved. See:
+https://github.com/torvalds/linux/blob/master/drivers/input/touchscreen/goodix_berlin_core.c
+
+Next step: audit Goodix official source's license, commit history, SPI
+compatible strings, event parsing, IRQ acknowledgement, ESD recovery and
+firmware-loader logic against the actual mondrian firmware, then construct
+a *device-specific* port with a host test and real touch trace. No driver
+source is copied or compiled by this PR.
 
 ## Android 17 lifetime / kernel version gate
 
