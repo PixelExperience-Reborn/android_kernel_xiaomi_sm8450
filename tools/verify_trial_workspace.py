@@ -67,6 +67,7 @@ def verify_sources(root, lock):
               "arch/arm64/configs/vendor/waipio_GKI.config",
               "arch/arm64/configs/vendor/xiaomi_GKI.config",
               "arch/arm64/configs/vendor/mondrian_GKI.config",
+              "arch/arm64/configs/vendor/debugfs.config",
               "android/abi_gki_aarch64_qcom"):
         require((kernel / f).is_file(), f"kernel configuration/KMI file missing: {f}")
     dts = root / SOURCE_PATHS["devicetrees"]
