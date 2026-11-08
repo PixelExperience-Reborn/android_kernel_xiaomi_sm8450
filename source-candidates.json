@@ -20,6 +20,15 @@
       "classification": "incomplete_untested_reference"
     },
     {
+      "role": "controller_vendor_touch",
+      "repository": "goodix/goodix_ts_berlin",
+      "ref": "master",
+      "source_tree_sha": "6c4b81587d43cf4ebf59cc63fe2916d77e4e8ce2",
+      "license": "GPL-2.0",
+      "classification": "incomplete_untested_reference",
+      "notes": "Goodix official Berlin driver supports GT9916 and SPI, but current mondrian DTS compatible string and firmware/ESD integration are unverified"
+    },
+    {
       "role": "modern_kernel_reference",
       "repository": "LineageOS/android_kernel_xiaomi_sm8450",
       "ref": "lineage-24.0",
