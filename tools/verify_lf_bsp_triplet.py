@@ -81,6 +81,24 @@ def validate_lock(lock):
     require(not any(lock["gates"].values()), "BSP build/release gate prematurely enabled")
     require(not lock["android17_policy"]["gki_5_10_supported_on_qpr1_plus"],
             "AOSP17 QPR1+ does not support this legacy GKI")
+    # Latest Google Android Clang is a diagnostic candidate for this legacy
+    # Qualcomm 5.10 source. Never infer GKI/KMI production compatibility.
+    diag = lock["diagnostic_android_clang"]
+    require(diag["source_repository"] ==
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86",
+            "compiler is not the official Android prebuilt repository")
+    require(diag["source_commit_sha"] == "c9ed23e2ba198658b630d4b10e09fa980cd43119",
+            "compiler checkout is not pinned to reviewed Google commit")
+    require(diag["source_root_tree_sha"] == "e78fb6d4e4c88779483d63fca708f43153ba673d",
+            "compiler root tree changed without review")
+    require(diag["path"] == "clang-r614150" and diag["llvm_major"] == 23,
+            "expected modern Android LLVM23 diagnostic toolchain")
+    require(diag["strict_frame_warnings_required"] and not diag["production_approved"],
+            "diagnostic compiler incorrectly marked ready for release")
+    require(diag["aosp17_platform_clang_unmodified"], "platform compiler modified without audit")
+    require(diag["qualcomm_module_symvers_compatible"] is None and
+            diag["kernel_runtime_booted"] is None,
+            "unverified kernel module or boot status asserted")
     return found
 
 
