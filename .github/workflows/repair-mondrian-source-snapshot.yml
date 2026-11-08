@@ -7,7 +7,6 @@ on:
       - bringup/a17-mondrian-kernel-full-source-20261108
     paths:
       - 'tools/verify_full_source_against_lf.py'
-      - '.github/workflows/repair-mondrian-source-snapshot.yml'
 
 permissions:
   contents: write
@@ -24,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: bringup/a17-mondrian-kernel-full-source-20261108
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: true
       - name: Clone exact original LF Linux 5.10.269 upstream commit
         run: |
