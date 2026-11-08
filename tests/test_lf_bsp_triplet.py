@@ -66,6 +66,22 @@ class LfCandidateTripletTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Goodix"):
             validate_lock(changed)
 
+    def test_new_google_android_clang_is_pinned_without_disabling_warnings(self):
+        c = self.lock["diagnostic_android_clang"]
+        self.assertEqual(c["path"], "clang-r614150")
+        self.assertEqual(c["llvm_major"], 23)
+        self.assertEqual(c["source_commit_sha"],
+                         "c9ed23e2ba198658b630d4b10e09fa980cd43119")
+        self.assertFalse(c["production_approved"])
+        self.assertTrue(c["strict_frame_warnings_required"])
+        self.assertIsNone(c["qualcomm_module_symvers_compatible"])
+        self.assertTrue(c["aosp17_platform_clang_unmodified"])
+        workflow = (ROOT / ".github/workflows/lf-image-diagnostic.yml").read_text()
+        self.assertIn("tools/fetch_modern_android_clang.sh", workflow)
+        self.assertIn("clang-r614150", workflow)
+        self.assertNotIn("KCFLAGS=-Wno-error", workflow)
+        self.assertNotIn("clang lld llvm make", workflow)
+
     def test_git_blob_digest_is_not_regular_file_sha(self):
         self.assertEqual(git_blob(b"hello\n"),
                          "ce013625030ba8dba906f756967f9e9ca394464a")
