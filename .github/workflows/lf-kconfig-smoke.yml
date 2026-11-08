@@ -1,0 +1,41 @@
+name: Mondrian 5.10.269 full-source Kconfig smoke (no kernel binary)
+
+on:
+  push:
+    branches: ['audit/a17-mondrian-kernel-bsp-provenance-20261108']
+    paths:
+      - 'tools/try_mondrian_kconfig.sh'
+      - '.github/workflows/lf-kconfig-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-mondrian-defconfig:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host Kconfig parsing dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends make gcc g++ bison flex libssl-dev bc
+      - name: Check out full LF Linux 5.10.269 candidate, not sparse worktree
+        run: |
+          git clone --quiet --depth 1 --filter=blob:none --single-branch \
+            --branch lineage-24.0 \
+            https://github.com/LF52406/android_kernel_xiaomi_sm8450.git "$RUNNER_TEMP/msm-kernel"
+          test "$(git -C "$RUNNER_TEMP/msm-kernel" rev-parse HEAD)" = \
+            "283772ceb84491fd446e340fd211d45fb9dd9a36"
+      - name: Generate Kconfig with all mondrian-specific fragments
+        run: |
+          bash -n tools/try_mondrian_kconfig.sh
+          bash tools/try_mondrian_kconfig.sh \
+            "$RUNNER_TEMP/msm-kernel" "$RUNNER_TEMP/mondrian-kconfig"
+      - name: Record kernel configuration only
+        if: success()
+        run: |
+          grep -E '^(CONFIG_(ARCH_CAPE|BUILD_ARM64_DT_OVERLAY|TOUCHSCREEN_GOODIX_BRL|FINGERPRINT_GOODIX_TEE|EROFS_FS|F2FS_FS)=)' \
+            "$RUNNER_TEMP/mondrian-kconfig/.config" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Kconfig only: no compiler/toolchain/KMI, Image, modules or boot verification' >> "$GITHUB_STEP_SUMMARY"
