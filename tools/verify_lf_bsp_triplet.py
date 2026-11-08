@@ -54,6 +54,14 @@ def validate_lock(lock):
                     and chr(92) not in path, "unsafe source path")
             require(f["contains"] and all(isinstance(x, str) and x for x in f["contains"]),
                     "no pinned content assertions")
+    links = lock.get("source_links", [])
+    require(len(links) == 1, "expected a single pinned external DTS source symlink")
+    link = links[0]
+    require(link["role"] == "kernel" and
+            link["path"] == "arch/arm64/boot/dts/vendor" and
+            link["target"] == "../../../../../sm8450-devicetrees" and
+            bool(SHA.fullmatch(link["git_blob_sha"])),
+            "unreviewed kernel DT symlink/target")
     layout = lock["build_layout"]
     require(layout["kernel_build_config"] == "msm-kernel/build.config.msm.waipio",
             "Qualcomm build config not pinned")
@@ -102,6 +110,15 @@ def verify_online(lock):
             for needle in f["contains"]:
                 require(needle in text, f"{role}: expected source evidence missing in {path}: {needle}")
             print(f"[PASS] {role}/{path} Git blob")
+    # A Git symlink is stored as a blob of its target path, not as a DTS file.
+    link = lock["source_links"][0]
+    source = sources[link["role"]]
+    raw = github_get(
+        f"https://raw.githubusercontent.com/{source['repository']}/{source['commit_sha']}/{link['path']}"
+    )
+    require(git_blob(raw) == link["git_blob_sha"], "kernel external DT symlink Git blob changed")
+    require(raw.decode("utf-8") == link["target"], "kernel external DT symlink retargeted")
+    print("[PASS] kernel DTS vendor symlink points to sibling sm8450-devicetrees")
     print("[PASS] pinned trial source provenance (NOT compiled kernel/modules/DTBO)")
 
 
