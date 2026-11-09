@@ -23,6 +23,7 @@ MANDATORY = {
     "CONFIG_F2FS_FS_SECURITY": "y",
     "CONFIG_FS_ENCRYPTION": "y",
     "CONFIG_FS_ENCRYPTION_INLINE_CRYPT": "y",
+    "CONFIG_MI_HARDWARE_ID": "m",
 }
 
 
@@ -57,6 +58,17 @@ def validate(actual=None):
     for p in ("drivers/misc/hwid/Kconfig", "drivers/misc/hwid/Makefile",
               "drivers/misc/hwid/hwid.c", "drivers/misc/hwid/hwid.h"):
         require((ROOT / p).is_file(), f"missing OEM HWID source dependency: {p}")
+    # PLAID was not released by Xiaomi and is never selected for
+    # mondrian. Do not preserve a dangling Kconfig source or fake .ko.
+    misc_kconfig_lines = [x.strip() for x in misc_kconfig.splitlines()
+                          if not x.lstrip().startswith("#")]
+    misc_make = (ROOT / "drivers/misc/Makefile").read_text(encoding="utf-8")
+    misc_make_lines = [x.strip() for x in misc_make.splitlines()
+                       if not x.lstrip().startswith("#")]
+    require('source "drivers/misc/plaid/Kconfig"' not in misc_kconfig_lines,
+            "nonexistent unselected PLAID must not break OEM Kconfig")
+    require(not any("CONFIG_XIAOMI_GPU_PLAID" in x for x in misc_make_lines),
+            "nonexistent PLAID .ko cannot be linked for mondrian")
     header = (ROOT / "drivers/misc/hwid/hwid.h").read_text(encoding="utf-8")
     require("HARDWARE_PROJECT_M11A       14" in header,
             "restored HWID driver does not define mondrian M11A")
@@ -80,7 +92,7 @@ def validate(actual=None):
                     f"after olddefconfig, {name}={value} not accepted by OEM kernel")
         require(config.get("CONFIG_EROFS_FS_DEBUG") != "y",
                 "shipping EROFS debug enabled")
-        print("[PASS] OEM Kconfig processed nine EROFS/SELinux/F2FS/FBE requirements")
+        print(f"[PASS] OEM Kconfig processed {len(MANDATORY)} EROFS/F2FS/FBE/HWID requirements")
     else:
         print("[PASS] OEM source has EROFS/F2FS Kconfig and explicit mondrian flags")
     print("[NOTE] No device boot, FBE key verification, kernel build or partition image is implied")
