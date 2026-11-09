@@ -1,0 +1,65 @@
+name: Import original Xiaomi mondrian OEM Linux source (independent PE branch)
+
+on:
+  push:
+    branches: ['audit/a17-mondrian-kernel-bsp-provenance-20261108']
+    paths:
+      - 'tools/import_official_xiaomi_mondrian_oem.sh'
+      - '.github/workflows/import-xiaomi-oem-mondrian.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: independent-pe-mondrian-oem-import
+  cancel-in-progress: false
+
+jobs:
+  immutable-xiaomi-source-import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    steps:
+      - name: Checkout PE audit orchestration, not as kernel source
+        uses: actions/checkout@v4
+        with:
+          ref: audit/a17-mondrian-kernel-bsp-provenance-20261108
+          path: orchestrator
+          persist-credentials: false
+      - name: Checkout clean PE source destination directly from seventeen
+        uses: actions/checkout@v4
+        with:
+          ref: seventeen
+          path: pe-kernel
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Validate import script syntax before fetching OEM source
+        run: |
+          set -euo pipefail
+          bash -n orchestrator/tools/import_official_xiaomi_mondrian_oem.sh
+          test "$(git -C pe-kernel rev-parse HEAD)" = \
+            8e022b75c1ce4746951179c193088807597ed2fc
+      - name: Checkout FULL official Xiaomi mondrian-s-oss source only
+        run: |
+          set -euo pipefail
+          git -c protocol.version=2 clone \
+            --quiet --depth=1 --filter=blob:none --single-branch \
+            --branch mondrian-s-oss \
+            https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git \
+            "$RUNNER_TEMP/xiaomi-mondrian-oem"
+          test "$(git -C "$RUNNER_TEMP/xiaomi-mondrian-oem" rev-parse HEAD)" = \
+            989b27aa8391a2ede9b067b53877c4c3343955fe
+          test "$(git -C "$RUNNER_TEMP/xiaomi-mondrian-oem" rev-parse 'HEAD^{tree}')" = \
+            cc1d5e5fc0f576c3ba3a7a8497de53f6e6023dc8
+          test -f "$RUNNER_TEMP/xiaomi-mondrian-oem/build.config.msm.mondrian"
+          echo "Reviewed source: MiCode/Xiaomi_Kernel_OpenSource mondrian-s-oss" >> "$GITHUB_STEP_SUMMARY"
+          echo "Files: $(git -C "$RUNNER_TEMP/xiaomi-mondrian-oem" ls-files | wc -l)" >> "$GITHUB_STEP_SUMMARY"
+          du -sh "$RUNNER_TEMP/xiaomi-mondrian-oem"
+      - name: Compare every OEM Git file and publish dedicated source branch
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          bash orchestrator/tools/import_official_xiaomi_mondrian_oem.sh \
+            "$GITHUB_WORKSPACE/pe-kernel" "$RUNNER_TEMP/xiaomi-mondrian-oem"
+          echo "[PASS] Imported complete OEM Linux 5.10.81 tree on new PE branch" >> "$GITHUB_STEP_SUMMARY"
+          echo "[NOTE] Missing BSP still must be adapted and built; no bootable kernel or ROM claimed" >> "$GITHUB_STEP_SUMMARY"
