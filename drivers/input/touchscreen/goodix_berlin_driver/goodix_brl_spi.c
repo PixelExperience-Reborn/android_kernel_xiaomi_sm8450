@@ -165,8 +165,10 @@ static int goodix_spi_probe(struct spi_device *spi)
 
 	/* get ic type */
 	ret = goodix_get_ic_type(&spi->dev, &ts_dev->bus);
-	if (ret < 0)
+	if (ret < 0) {
+		kfree(ts_dev);
 		return ret;
+	}
 
 	spi_set_drvdata(spi, ts_dev);
 

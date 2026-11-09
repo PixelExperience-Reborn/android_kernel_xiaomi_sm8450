@@ -28,6 +28,10 @@ def main():
     require('bus_inf->ic_type = IC_TYPE_BERLIN_D' in utils, "Berlin D protocol missing")
     require("SPI_READ_PREFIX_LEN - 1" in spi, "Berlin D read framing missing")
     require("goodix_spi_bus_init()" in core, "SPI driver registration missing")
+    require("u16 scan_rate = 0;" in (DRIVER / "goodix_ts_replay.c").read_text(),
+            "Replay must not publish uninitialized scan-rate data")
+    require("if (ret < 0) {\n\t\tkfree(ts_dev);" in spi,
+            "Goodix SPI probe must free allocation if controller is unsupported")
     require("platform_driver_unregister(&goodix_ts_driver)" in core,
             "failed SPI registration does not unwind platform driver")
     require('source "drivers/input/touchscreen/goodix_berlin_driver/Kconfig"' in kconfig,

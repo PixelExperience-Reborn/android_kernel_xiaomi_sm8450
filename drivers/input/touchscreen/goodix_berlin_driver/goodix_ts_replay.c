@@ -202,7 +202,8 @@ static void save_replay_body(struct goodix_ts_core *core_data, u8 *frame, struct
     int offset = 0;
     u32 type_group;
     u16 frame_index = le16_to_cpup((__le16 *)(frame + 1));
-    u16 scan_rate;
+    /* The upstream replay frame does not provide a measured scan rate. */
+    u16 scan_rate = 0; /* Explicit unknown sentinel, not stack garbage. */
     u16 mutual_duration;
     u16 mutual_freq_a;
     u16 mutual_freq_b;
