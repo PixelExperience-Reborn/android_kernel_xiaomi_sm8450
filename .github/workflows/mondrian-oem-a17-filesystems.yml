@@ -6,11 +6,15 @@ on:
     paths:
       - 'arch/arm64/configs/vendor/mondrian_GKI.config'
       - 'tools/verify_mondrian_oem_eroFS.py'
+      - 'drivers/misc/hwid/**'
+      - 'drivers/misc/Kconfig'
       - '.github/workflows/mondrian-oem-a17-filesystems.yml'
   pull_request:
     paths:
       - 'arch/arm64/configs/vendor/mondrian_GKI.config'
       - 'tools/verify_mondrian_oem_eroFS.py'
+      - 'drivers/misc/hwid/**'
+      - 'drivers/misc/Kconfig'
       - '.github/workflows/mondrian-oem-a17-filesystems.yml'
 
 permissions:
