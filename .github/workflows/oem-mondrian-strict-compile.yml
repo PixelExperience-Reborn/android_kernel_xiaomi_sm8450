@@ -4,14 +4,8 @@ on:
   push:
     branches:
       - bringup/a17-mondrian-xiaomi-oem-base-20261109
-    paths:
-      - '.github/workflows/oem-mondrian-strict-compile.yml'
-      - 'tools/fetch_android_kernel_clang.sh'
-      - 'arch/arm64/configs/vendor/mondrian_GKI.config'
-      - 'drivers/**'
-      - 'fs/**'
-      - 'kernel/**'
-      - 'Makefile'
+    # Compile after every OEM source change: KASAN/compiler, architecture,
+    # drivers, Kconfig and build scripts must all be covered.
   workflow_dispatch:
 
 permissions:
