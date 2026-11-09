@@ -50,7 +50,7 @@ jobs:
           echo "$RUNNER_TEMP/google-clang/clang-r614150/bin" >> "$GITHUB_PATH"
           actual="$RUNNER_TEMP/google-clang/clang-r614150/bin/clang"
           test -x "$actual"
-          "$actual" --version | head -1 | grep -F 'clang version 23.'
+          "$actual" --version | sed -n '1p' | grep -F 'clang version 23.'
           test "$(git -C "$RUNNER_TEMP/google-clang" rev-parse HEAD)" = \
             c9ed23e2ba198658b630d4b10e09fa980cd43119
           command -v aarch64-linux-gnu-elfedit
