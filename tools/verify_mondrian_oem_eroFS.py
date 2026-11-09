@@ -48,6 +48,18 @@ def validate(actual=None):
     erofs_kconfig = EROFS_KCONFIG.read_text(encoding="utf-8")
     require("CONFIG_EROFS_FS=y" in original and "CONFIG_F2FS_FS=y" in original,
             "official Xiaomi GKI baseline lacks built-in EROFS/F2FS")
+    # Xiaomi's published tree contains a Kconfig hard dependency on HWID,
+    # but omitted the actual source directory. Require the minimal restored
+    # M11A-capable implementation, not a commented-out Kconfig source line.
+    misc_kconfig = (ROOT / "drivers/misc/Kconfig").read_text(encoding="utf-8")
+    require('source "drivers/misc/hwid/Kconfig"' in misc_kconfig,
+            "OEM Kconfig HWID requirement was removed instead of implemented")
+    for p in ("drivers/misc/hwid/Kconfig", "drivers/misc/hwid/Makefile",
+              "drivers/misc/hwid/hwid.c", "drivers/misc/hwid/hwid.h"):
+        require((ROOT / p).is_file(), f"missing OEM HWID source dependency: {p}")
+    header = (ROOT / "drivers/misc/hwid/hwid.h").read_text(encoding="utf-8")
+    require("HARDWARE_PROJECT_M11A       14" in header,
+            "restored HWID driver does not define mondrian M11A")
     keys = settings(fragment)
     for name, value in MANDATORY.items():
         require(keys.get(name) == value,
