@@ -539,5 +539,6 @@ source "drivers/misc/habanalabs/Kconfig"
 source "drivers/misc/uacce/Kconfig"
 source "drivers/misc/hwid/Kconfig"
 source "drivers/misc/mi_gamekey/Kconfig"
-source "drivers/misc/plaid/Kconfig"
+# OEM mondrian-s-oss omits plaid/Kconfig; no mondrian defconfig selects it.
+# Re-enable only with a reviewed Xiaomi driver and actual hardware requirement.
 endmenu
