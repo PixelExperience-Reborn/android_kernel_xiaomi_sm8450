@@ -6765,7 +6765,7 @@ static void qti_battery_register_panel_notifier_work(struct work_struct *work)
 	struct device_node *node;
 	struct battery_chg_dev *pvt_data = container_of(work, struct battery_chg_dev, panel_notify_register_work.work);
 	int error = 0;
-	static retry_count = 3;
+	static int retry_count = 3;
 
 	node = of_find_node_by_name(NULL, "charge-screen");
 	if (!node) {
@@ -6774,6 +6774,7 @@ static void qti_battery_register_panel_notifier_work(struct work_struct *work)
 	}
 
 	error = charge_check_panel(node);
+	of_node_put(node);
 	if (error == -EPROBE_DEFER)
 		pr_err("%s ERROR: Cannot fine panel of node!", __func__);
 
@@ -6781,7 +6782,7 @@ static void qti_battery_register_panel_notifier_work(struct work_struct *work)
 		cookie = panel_event_notifier_register(PANEL_EVENT_NOTIFICATION_PRIMARY,
 				PANEL_EVENT_NOTIFIER_CLIENT_CHARGE, active_panel,
 				screen_state_for_charge_callback, (void *)pvt_data);
-		pr_err("ERROR: cookie:%s", cookie);
+		pr_debug("primary panel notifier cookie: %p\n", cookie);
 		if (IS_ERR(cookie))
 			printk(KERN_ERR "%s:Failed to register for panel events\n", __func__);
 		else
@@ -6824,7 +6825,7 @@ static void qti_battery_register_panel_sec_notifier_work(struct work_struct *wor
 	struct device_node *node;
 	struct battery_chg_dev *pvt_data = container_of(work, struct battery_chg_dev, panel_sec_notify_register_work.work);
 	int error = 0;
-	static retry_count = 3;
+	static int retry_count = 3;
 
 	node = of_find_node_by_name(NULL, "charge-screen");
 	if (!node) {
@@ -6833,6 +6834,7 @@ static void qti_battery_register_panel_sec_notifier_work(struct work_struct *wor
 	}
 
 	error = charge_check_panel_sec(node);
+	of_node_put(node);
 	if (error == -EPROBE_DEFER)
 		pr_err("%s ERROR: Cannot fine panel of node!", __func__);
 
@@ -6840,7 +6842,7 @@ static void qti_battery_register_panel_sec_notifier_work(struct work_struct *wor
 		cookie1 = panel_event_notifier_register(PANEL_EVENT_NOTIFICATION_SECONDARY,
 				PANEL_EVENT_NOTIFIER_CLIENT_CHARGE_SECOND, active_panel_sec,
 				screen_state_for_charge_callback, (void *)pvt_data);
-		pr_err("ERROR: cookie1:%s", cookie1);
+		pr_debug("secondary panel notifier cookie: %p\n", cookie1);
 		if (IS_ERR(cookie1))
 			printk(KERN_ERR "%s:Failed to register for second panel events\n", __func__);
 		else
