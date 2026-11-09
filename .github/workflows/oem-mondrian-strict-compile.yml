@@ -80,6 +80,18 @@ jobs:
           test -s "$RUNNER_TEMP/mondrian-out/vmlinux"
           echo '[PASS] Strict ARM64 kernel ELF compilation' >> "$GITHUB_STEP_SUMMARY"
           echo '[PENDING] Qualcomm external modules, DTBO, KMI, AOSP17 images and device boot' >> "$GITHUB_STEP_SUMMARY"
+      - name: Build ARM64 Image and all selected in-tree kernel modules
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          make O="$RUNNER_TEMP/mondrian-out" -j3 Image modules \
+            2>&1 | tee -a "$RUNNER_TEMP/mondrian-kernel-compile.log"
+          test -s "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image"
+          test -s "$RUNNER_TEMP/mondrian-out/Module.symvers"
+          ko_count=$(find "$RUNNER_TEMP/mondrian-out" -type f -name '*.ko' | wc -l)
+          test "$ko_count" -gt 0
+          echo "[PASS] ARM64 Image, in-tree modules ($ko_count) and Module.symvers" >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] Qualcomm external modules, device DT/DTBO, KMI, Android17 boot and device tests' >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve diagnostic config and compiler messages only
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,3 +103,4 @@ jobs:
           path: |
             ${{ runner.temp }}/mondrian-out/.config
             ${{ runner.temp }}/mondrian-kernel-compile.log
+            ${{ runner.temp }}/mondrian-out/Module.symvers
