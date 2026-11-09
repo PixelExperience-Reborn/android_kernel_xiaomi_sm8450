@@ -178,7 +178,8 @@ static struct cc_limits_data *opp_init(int *cpus)
 {
 	int cpu1, cpu2;
 	struct device *cpu1_dev, *cpu2_dev;
-	struct limits_freq_table *cpu1_freq_table, *cpu2_freq_table;
+	struct limits_freq_table *cpu1_freq_table = NULL;
+	struct limits_freq_table *cpu2_freq_table = NULL;
 	struct limits_freq_table *cpu_freq_table[CPU_MAP_CT];
 	int table_ct[CPU_MAP_CT], ret = 0;
 	struct cc_limits_data *cc_cdev = NULL;
@@ -230,7 +231,7 @@ opp_err_exit:
 static int cc_init(struct device_node *np, int *cpus)
 {
 	struct cc_limits_data *cc_cdev;
-	int idx = 0, ret = 0;
+	int idx = 0, ret = 0, added_requests = 0;
 	struct cpufreq_policy *policy;
 
 	mutex_lock(&cc_list_lock);
@@ -279,19 +280,24 @@ static int cc_init(struct device_node *np, int *cpus)
 					cc_cdev->cpu_map[idx], ret);
 			goto cc_err_exit;
 		}
+		added_requests++;
 	}
 	snprintf(cc_cdev->cdev_name, THERMAL_NAME_LENGTH,
 			"thermal-cluster-%d-%d", cpus[0], cpus[1]);
 	cc_cdev->cdev = thermal_of_cooling_device_register(
 					np, cc_cdev->cdev_name, cc_cdev,
 					&cc_cooling_ops);
+	if (IS_ERR(cc_cdev->cdev)) {
+		ret = PTR_ERR(cc_cdev->cdev);
+		goto cc_err_exit;
+	}
 	list_add(&cc_cdev->node, &cc_cdev_list);
 	mutex_unlock(&cc_list_lock);
 
 	return 0;
 cc_err_exit:
 	mutex_unlock(&cc_list_lock);
-	for (idx = 0; idx < CPU_MAP_CT; idx++)
+	for (idx = 0; idx < added_requests; idx++)
 		freq_qos_remove_request(&cc_cdev->cc_qos_req[idx]);
 	kfree(cc_cdev->map_freq);
 	kfree(cc_cdev);
