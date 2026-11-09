@@ -8,7 +8,8 @@
  */
 #define typecheck(type,x) \
 ({	type __dummy; \
-	typeof(x) __dummy2; \
+	/* A const-qualified typeof(x) must be initialized with modern Clang. */ \
+	typeof(x) __dummy2 = { 0 }; \
 	(void)(&__dummy == &__dummy2); \
 	1; \
 })
