@@ -27,7 +27,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            bc bison flex make libssl-dev libelf-dev dwarves
+            bc bison flex make libssl-dev libelf-dev dwarves \
+            binutils-aarch64-linux-gnu
       - name: Obtain pinned Google Android Clang r614150
         run: |
           bash -n tools/fetch_android_kernel_clang.sh
@@ -39,13 +40,15 @@ jobs:
           test "$(readlink -f "$(command -v clang)")" = \
             "$RUNNER_TEMP/google-clang/clang-r614150/bin/clang"
           clang --version | head -1 | grep -E 'clang version 23[.]'
-          test -f build.config.msm.mondrian
+          test -x "$(command -v aarch64-linux-gnu-elfedit)"
+          echo '' | clang --target=aarch64-linux-gnu -dM -E -x c - | \
+            grep -q '^#define __aarch64__ 1
           grep -Fx 'SUBLEVEL = 81' Makefile
           test -f drivers/misc/hwid/hwid.c
       - name: Generate actual OEM mondrian GKI kernel configuration
         run: |
           set -euo pipefail
-          export LLVM=1 LLVM_IAS=1 ARCH=arm64
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
           mkdir -p "$RUNNER_TEMP/mondrian-out"
           make O="$RUNNER_TEMP/mondrian-out" gki_defconfig
           bash scripts/kconfig/merge_config.sh -m -r \
@@ -58,7 +61,45 @@ jobs:
       - name: Strictly compile OEM Linux kernel with LLVM23
         run: |
           set -euo pipefail
-          export LLVM=1 LLVM_IAS=1 ARCH=arm64
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          # No -Wno-error, no forced frame-warning bypass, no fake .ko.
+          make O="$RUNNER_TEMP/mondrian-out" -j3 vmlinux \
+            2>&1 | tee "$RUNNER_TEMP/mondrian-kernel-compile.log"
+          test -s "$RUNNER_TEMP/mondrian-out/vmlinux"
+          echo "[PASS] Strict OEM kernel ELF compile with Android Clang 23" >> "$GITHUB_STEP_SUMMARY"
+          echo "[NOT VERIFIED] external Qualcomm modules, DTBO, KMI, boot.img, and Android17 device boot" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve diagnostic config and compiler messages only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oem-mondrian-strict-compile-evidence
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/mondrian-out/.config
+            ${{ runner.temp }}/mondrian-kernel-compile.log
+
+          test -f build.config.msm.mondrian
+          grep -Fx 'SUBLEVEL = 81' Makefile
+          test -f drivers/misc/hwid/hwid.c
+      - name: Generate actual OEM mondrian GKI kernel configuration
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          mkdir -p "$RUNNER_TEMP/mondrian-out"
+          make O="$RUNNER_TEMP/mondrian-out" gki_defconfig
+          bash scripts/kconfig/merge_config.sh -m -r \
+            -O "$RUNNER_TEMP/mondrian-out" \
+            "$RUNNER_TEMP/mondrian-out/.config" \
+            arch/arm64/configs/vendor/mondrian_GKI.config
+          make O="$RUNNER_TEMP/mondrian-out" olddefconfig
+          python3 tools/verify_mondrian_oem_eroFS.py \
+            --generated-config "$RUNNER_TEMP/mondrian-out/.config"
+      - name: Strictly compile OEM Linux kernel with LLVM23
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
           # No -Wno-error, no forced frame-warning bypass, no fake .ko.
           make O="$RUNNER_TEMP/mondrian-out" -j3 vmlinux \
             2>&1 | tee "$RUNNER_TEMP/mondrian-kernel-compile.log"
