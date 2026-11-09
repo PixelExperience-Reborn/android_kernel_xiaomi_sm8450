@@ -68,4 +68,5 @@ obj-$(CONFIG_WIGIG_SENSING_SPI)	+= wigig_sensing.o
 obj-y				+= hwid/
 obj-$(CONFIG_MI_GAMEKEY)        += mi_gamekey/
 obj-$(CONFIG_LDO_WL2866D)	+= wl2866d.o
-obj-$(CONFIG_XIAOMI_GPU_PLAID)	+= plaid/
+# PLAID sources were not published by Xiaomi for mondrian and its Kconfig
+# symbol is unselected. Do not create a nonfunctional fake module.
