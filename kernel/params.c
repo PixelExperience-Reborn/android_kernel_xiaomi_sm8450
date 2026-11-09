@@ -346,9 +346,11 @@ int param_set_invbool(const char *val, const struct kernel_param *kp)
 {
 	int ret;
 	bool boolval;
-	struct kernel_param dummy;
+	/* Initialize the const fields as well as the parser argument. */
+	struct kernel_param dummy = {
+		.arg = &boolval,
+	};
 
-	dummy.arg = &boolval;
 	ret = param_set_bool(val, &dummy);
 	if (ret == 0)
 		*(bool *)kp->arg = !boolval;
@@ -402,13 +404,14 @@ static int param_array(struct module *mod,
 		       unsigned int *num)
 {
 	int ret;
-	struct kernel_param kp;
+	struct kernel_param kp = {
+		.name = name,
+		.arg = elem,
+		.level = level,
+	};
 	char save;
 
-	/* Get the name right for errors. */
-	kp.name = name;
-	kp.arg = elem;
-	kp.level = level;
+	/* Name, element pointer and level are initialized before parsing. */
 
 	*num = 0;
 	/* We expect a comma-separated list of values. */
