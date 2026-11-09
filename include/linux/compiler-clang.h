@@ -30,8 +30,16 @@
  */
 
 #if __has_feature(address_sanitizer) || __has_feature(hwaddress_sanitizer)
-/* Emulate GCC's __SANITIZE_ADDRESS__ flag */
-#define __SANITIZE_ADDRESS__
+/*
+ * Older Clang versions didn't define the GCC-compatible sanitizer macro.
+ * New Android Clang toolchains already provide __SANITIZE_ADDRESS__=1
+ * when the address or hardware-address sanitizer is enabled. Do not
+ * redefine the compiler builtin: it creates -Wmacro-redefined and makes
+ * strict KASAN-enabled kernel builds fail.
+ */
+#ifndef __SANITIZE_ADDRESS__
+#define __SANITIZE_ADDRESS__ 1
+#endif
 #define __no_sanitize_address \
 		__attribute__((no_sanitize("address", "hwaddress")))
 #else
