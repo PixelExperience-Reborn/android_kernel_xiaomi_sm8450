@@ -34,12 +34,13 @@ The header defines `HARDWARE_PROJECT_M11A = 14` for mondrian,
 the exact hardware family required here. The driver provides module
 parameters and exports hardware version helpers.
 
-**This code is restored but is not yet declared operational**:
-`CONFIG_MI_HARDWARE_ID` remains disabled/unselected in the stock
-OEM mondrian fragment pending dependency and device tests. OEM
-Kernel/DT/firmware interfaces, Qualcomm modules, and FOD still require
-a separate compatibility audit. The restored HWID files are not
-equivalent to a complete Qualcomm BSP or a successful physical boot.
+**This code is restored but is not yet declared operational**.
+The original Xiaomi mondrian fragment already sets
+`CONFIG_MI_HARDWARE_ID=m`; the missing source is required for that
+device-selected module. The HWID Kconfig/driver is now present, and the
+actual `olddefconfig` check verifies the module selection. Device
+runtime, kernel ABI, Qualcomm modules and FOD still require separate
+hardware validation; this does not prove a complete BSP or boot.
 
 ## Verification
 
@@ -49,3 +50,20 @@ flags. If another unpublished Xiaomi source dependency is detected,
 restore the minimal necessary component with exact provenance; do
 not comment out Kconfig statements or silently remove device functions
 to make CI green.
+
+
+## Explicitly excluded OEM dangling PLAID reference
+
+The Xiaomi `drivers/misc/Kconfig` also referenced an unpublished
+`drivers/misc/plaid/Kconfig`, and `drivers/misc/Makefile` referenced
+`CONFIG_XIAOMI_GPU_PLAID`. No Xiaomi OEM `mondrian_GKI.config`,
+`mondrian_consolidate.config`, or GKI defconfig selects this
+unpublished module. We removed the **two invalid integration entries**
+with explanatory comments instead of making a fake driver or importing
+an unrelated hardware service. This is not equivalent to disabling a
+verified mondrian runtime component; reintegration requires original
+source and evidence of real device support.
+
+A real OEM `gki_defconfig` + mondrian fragment + `olddefconfig`
+passed after restoring HWID and excluding the dangling PLAID
+reference: https://github.com/PixelExperience-Reborn/android_kernel_xiaomi_sm8450/actions/runs/42596972649
