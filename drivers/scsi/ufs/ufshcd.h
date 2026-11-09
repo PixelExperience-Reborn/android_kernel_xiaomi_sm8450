@@ -1412,7 +1412,4 @@ int ufshcd_uic_hibern8_enter(struct ufs_hba *hba);
 int ufshcd_uic_hibern8_exit(struct ufs_hba *hba);
 int ufshcd_read_string_desc(struct ufs_hba *hba, u8 desc_index,
 			    u8 **buf, bool ascii);
-int ufshcd_wb_ctrl(struct ufs_hba *hba, bool enable);
-int ufshcd_wb_toggle_flush_during_h8(struct ufs_hba *hba, bool set);
-void ufshcd_wb_toggle_flush(struct ufs_hba *hba, bool enable);
 #endif /* End of Header */
