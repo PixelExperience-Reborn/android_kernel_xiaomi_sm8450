@@ -47,7 +47,7 @@ jobs:
           echo "$RUNNER_TEMP/google-clang/clang-r614150/bin" >> "$GITHUB_PATH"
           test "$(git -C "$RUNNER_TEMP/google-clang" rev-parse HEAD)" = \
             c9ed23e2ba198658b630d4b10e09fa980cd43119
-          "$RUNNER_TEMP/google-clang/clang-r614150/bin/clang" --version | head -1 | grep -F 'clang version 23.'
+          "$RUNNER_TEMP/google-clang/clang-r614150/bin/clang" --version | sed -n '1p' | grep -F 'clang version 23.'
       - name: Run OEM Kconfig and enforce compiled GT9916S module selection
         run: |
           set -euo pipefail
@@ -60,6 +60,8 @@ jobs:
             arch/arm64/configs/vendor/mondrian_GKI.config
           make O="$RUNNER_TEMP/goodix-out" olddefconfig
           grep -Fx 'CONFIG_TOUCHSCREEN_GOODIX_BRL=m' "$RUNNER_TEMP/goodix-out/.config"
+          grep -Fx 'CONFIG_QCOM_PANEL_EVENT_NOTIFIER=m' "$RUNNER_TEMP/goodix-out/.config"
+          grep -Fx 'CONFIG_DRM_PANEL=y' "$RUNNER_TEMP/goodix-out/.config"
           python3 tools/verify_mondrian_oem_eroFS.py \
             --generated-config "$RUNNER_TEMP/goodix-out/.config"
       - name: Compile complete Goodix SPI module objects against Xiaomi OEM kernel
