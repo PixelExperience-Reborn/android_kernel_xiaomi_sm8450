@@ -41,7 +41,7 @@
 #endif
 #ifdef CONFIG_DRM_MEDIATEK
 #include "mtk_disp_notify.h"
-#elif defined(CONFIG_DRM_PANEL_NOTIFY)
+#elif IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
 #include <linux/soc/qcom/panel_event_notifier.h>
 #elif defined(CONFIG_FB)
 #include <linux/notifier.h>
@@ -470,7 +470,7 @@ struct goodix_ts_board_data {
 	bool esd_enable;
 	char fw_name[GOODIX_MAX_STR_LABLE_LEN];
 	char cfg_bin_name[GOODIX_MAX_STR_LABLE_LEN];
-#ifdef CONFIG_DRM_PANEL_NOTIFY
+#if IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
 	struct drm_panel *active_panel;
 #endif
 };
@@ -792,7 +792,7 @@ struct goodix_ts_core {
 
 #ifdef CONFIG_DRM_MEDIATEK
 	struct notifier_block pm_notifier;
-#elif defined(CONFIG_DRM_PANEL_NOTIFY)
+#elif IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
 	void *cookie;
 #elif defined(CONFIG_FB)
 	struct notifier_block pm_notifier;
