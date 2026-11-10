@@ -200,9 +200,37 @@ static int cpufreq_cdev_hp_online(unsigned int online_cpu)
 }
 
 /*
- * An online CPU can precede its CPUFreq policy.  Recheck cooling
- * registration when the policy is actually created, not only at hotplug.
- * The callback must only queue work: policy creation holds CPUFreq locks.
+ * CPUFreq policies can appear after CPU-online and be destroyed on driver
+ * removal.  Drop our QoS vote while the old policy is still alive, before
+ * CPUFreq destroys its constraints.
+ *
+ * Call only after registration work has finished and new registration
+ * producers have been quiesced (or while holding qti_cpufreq_cdev_lock).
+ */
+static void cpufreq_cdev_release(struct cpufreq_cdev_device *cdev_data)
+{
+	struct thermal_cooling_device *cdev = READ_ONCE(cdev_data->cdev);
+
+	if (!cdev)
+		return;
+
+	WRITE_ONCE(cdev_data->cdev, NULL);
+	thermal_cooling_device_unregister(cdev);
+	if (freq_qos_request_active(&cdev_data->qos_max_freq_req))
+		freq_qos_remove_request(&cdev_data->qos_max_freq_req);
+	cpufreq_cpu_put(cdev_data->policy);
+	cdev_data->policy = NULL;
+	kfree(cdev_data->freq_table);
+	cdev_data->freq_table = NULL;
+	cdev_data->max_state = 0;
+	cdev_data->cur_state = 0;
+}
+
+/*
+ * Policy creation holds internal CPUFreq locks: never register a cooling
+ * device synchronously in that callback.  Queue existing registration work.
+ * Policy removal uses the blocking notifier and must drain the worker
+ * before its policy and QoS constraints can be freed by CPUFreq.
  */
 static int cpufreq_cdev_policy_event(struct notifier_block *nb,
 				    unsigned long event, void *data)
@@ -210,15 +238,24 @@ static int cpufreq_cdev_policy_event(struct notifier_block *nb,
 	struct cpufreq_policy *policy = data;
 	struct cpufreq_cdev_device *cdev_data;
 
-	if (event != CPUFREQ_CREATE_POLICY)
+	if (event != CPUFREQ_CREATE_POLICY &&
+	    event != CPUFREQ_REMOVE_POLICY)
 		return NOTIFY_DONE;
 
 	mutex_lock(&qti_cpufreq_cdev_lock);
 	list_for_each_entry(cdev_data, &qti_cpufreq_cdev_list, node) {
-		if (READ_ONCE(cdev_data->cdev) ||
-		    !cpumask_test_cpu(cdev_data->cpu, policy->related_cpus))
+		if (!cpumask_test_cpu(cdev_data->cpu, policy->related_cpus))
 			continue;
-		queue_work(system_highpri_wq, &cdev_data->reg_work);
+
+		if (event == CPUFREQ_CREATE_POLICY) {
+			if (!READ_ONCE(cdev_data->cdev))
+				queue_work(system_highpri_wq, &cdev_data->reg_work);
+		} else {
+			/* Keep the list lock: CPU-hotplug cannot queue new work. */
+			cancel_work_sync(&cdev_data->reg_work);
+			if (cdev_data->policy == policy)
+				cpufreq_cdev_release(cdev_data);
+		}
 	}
 	mutex_unlock(&qti_cpufreq_cdev_lock);
 
@@ -259,13 +296,7 @@ static int cpufreq_cdev_remove(struct platform_device *pdev)
 
 		/* No registration work may outlive its QoS policy or devdata. */
 		cancel_work_sync(&cdev_data->reg_work);
-		if (cdev_data->cdev) {
-			thermal_cooling_device_unregister(cdev_data->cdev);
-			if (freq_qos_request_active(&cdev_data->qos_max_freq_req))
-				freq_qos_remove_request(&cdev_data->qos_max_freq_req);
-			cpufreq_cpu_put(cdev_data->policy);
-			kfree(cdev_data->freq_table);
-		}
+		cpufreq_cdev_release(cdev_data);
 		kfree(cdev_data);
 	}
 	return 0;
