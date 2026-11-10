@@ -11,6 +11,7 @@ SRC = ROOT / "drivers/thermal/qcom/cpu_voltage_cooling.c"
 MAKE = ROOT / "drivers/thermal/qcom/Makefile"
 CONFIG = ROOT / "arch/arm64/configs/vendor/mondrian_GKI.config"
 GPU_SRC = ROOT / "drivers/thermal/qcom/qti_devfreq_cdev.c"
+CPUFREQ_SRC = ROOT / "drivers/thermal/qcom/qti_cpufreq_cdev.c"
 
 
 def require(condition, detail):
@@ -23,6 +24,45 @@ def main():
     make = MAKE.read_text(encoding="utf-8")
     config = CONFIG.read_text(encoding="utf-8")
     gpu = GPU_SRC.read_text(encoding="utf-8")
+    cpufreq = CPUFREQ_SRC.read_text(encoding="utf-8")
+
+    require("CONFIG_QTI_CPUFREQ_CDEV=m" in config,
+            "OEM CPUFreq cooling module must remain selected")
+    require("obj-$(CONFIG_QTI_CPUFREQ_CDEV) += qti_cpufreq_cdev.o" in make,
+            "OEM CPUFreq cooling module must remain linked")
+    cpu_register = cpufreq.split("static void cpufreq_cdev_register(", 1)[1].split(
+        "static int cpufreq_cdev_hp_online(", 1)[0]
+    cpu_remove = cpufreq.split("static int cpufreq_cdev_remove(", 1)[1].split(
+        "static int cpufreq_cdev_probe(", 1)[0]
+    cpu_probe = cpufreq.split("static int cpufreq_cdev_probe(", 1)[1].split(
+        "static const struct of_device_id", 1)[0]
+    cpu_set = cpufreq.split("static int cpufreq_cdev_set_state(", 1)[1].split(
+        "static int cpufreq_cdev_get_state(", 1)[0]
+    require("cpufreq_for_each_valid_entry(" in cpu_register and
+            "sort(freq_table, freq_count," in cpu_register,
+            "CPUFreq limits must exclude invalid entries and be descending")
+    require(cpu_register.index("ret = freq_qos_add_request(") <
+            cpu_register.index("if (ret < 0)") <
+            cpu_register.index("thermal_cooling_device_register("),
+            "CPUFreq QoS creation must be checked before cooling registration")
+    require("freq_qos_remove_request(" in cpu_register and
+            "cpufreq_cpu_put(policy);" in cpu_register and
+            "cdev_data->freq_table = NULL;" in cpu_register,
+            "CPUFreq failed registration must release policy, QoS and table")
+    require("mutex_lock(&cdev_data->state_lock);" in cpu_set and
+            cpu_set.index("freq_qos_update_request(") <
+            cpu_set.index("cdev_data->cur_state = state;"),
+            "CPUFreq cooling state must change only after successful QoS vote")
+    require(cpu_remove.index("cpuhp_remove_state_nocalls(") <
+            cpu_remove.index("mutex_lock(&qti_cpufreq_cdev_lock)"),
+            "CPU hotplug callbacks must stop outside the list mutex")
+    require(cpu_remove.index("cancel_work_sync(") <
+            cpu_remove.index("thermal_cooling_device_unregister("),
+            "CPUFreq registration work must stop before teardown")
+    require("cpufreq_cdev_owner = &pdev->dev;" in cpu_probe and
+            "of_node_put(cpu_phandle);" in cpu_probe and
+            "bool duplicate;" in cpu_probe,
+            "CPUFreq probe must have one owner and release matched CPU phandles")
 
     require("CONFIG_QTI_DEVFREQ_CDEV=m" in config,
             "OEM GPU devfreq cooling module is not selected")
@@ -85,7 +125,7 @@ def main():
             "thermal state mutex was not initialized")
     require("ret = -ENOMEM;" in opp and "return ERR_PTR(ret);" in opp,
             "OPP failures must preserve their actual error codes")
-    print("[PASS] mondrian OEM CPU-voltage and GPU-devfreq cooling safety checks")
+    print("[PASS] mondrian OEM CPU voltage, CPUFreq hotplug and GPU devfreq safety checks")
     print("[PENDING] LLVM build and runtime thermal transitions on SM8475")
 
 
