@@ -56,9 +56,18 @@ def main():
     require(cpu_remove.index("cpuhp_remove_state_nocalls(") <
             cpu_remove.index("mutex_lock(&qti_cpufreq_cdev_lock)"),
             "CPU hotplug callbacks must stop outside the list mutex")
+    cpu_release = cpufreq.split("static void cpufreq_cdev_release(", 1)[1].split(
+        "static int cpufreq_cdev_policy_event(", 1)[0]
     require(cpu_remove.index("cancel_work_sync(") <
-            cpu_remove.index("thermal_cooling_device_unregister("),
+            cpu_remove.index("cpufreq_cdev_release(cdev_data);"),
             "CPUFreq registration work must stop before teardown")
+    require(cpu_release.index("thermal_cooling_device_unregister(") <
+            cpu_release.index("freq_qos_remove_request(") <
+            cpu_release.index("cpufreq_cpu_put("),
+            "CPUFreq cooling must unregister before freeing policy QoS")
+    require("cdev_data->policy = NULL;" in cpu_release and
+            "cdev_data->freq_table = NULL;" in cpu_release,
+            "CPUFreq stale policy and table pointers must be cleared")
     require("cpufreq_cdev_owner = &pdev->dev;" in cpu_probe and
             "of_node_put(cpu_phandle);" in cpu_probe and
             "bool duplicate;" in cpu_probe,
@@ -66,10 +75,14 @@ def main():
     policy_notifier = cpufreq.split(
         "static int cpufreq_cdev_policy_event(", 1)[1].split(
         "static struct notifier_block cpufreq_cdev_policy_nb", 1)[0]
-    require("event != CPUFREQ_CREATE_POLICY" in policy_notifier and
+    require("CPUFREQ_CREATE_POLICY" in policy_notifier and
+            "CPUFREQ_REMOVE_POLICY" in policy_notifier and
             "queue_work(system_highpri_wq, &cdev_data->reg_work);" in policy_notifier and
             "cpumask_test_cpu(cdev_data->cpu, policy->related_cpus)" in policy_notifier,
             "CPUFreq policy creation must retry cooling registration asynchronously")
+    require(policy_notifier.index("cancel_work_sync(") <
+            policy_notifier.index("cpufreq_cdev_release(cdev_data);"),
+            "CPUFreq policy removal must quiesce work before releasing QoS")
     require(cpu_probe.index("cpufreq_register_notifier(") <
             cpu_probe.index("cpuhp_setup_state("),
             "policy notifier must be installed before hotplug callbacks")
