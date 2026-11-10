@@ -42,6 +42,13 @@ struct thermal_pause_cdev {
 	int				delayed_work_retries;
 };
 
+/*
+ * WALT pause/resume temporarily drops cpus_pause_lock. Serialise transitions
+ * across cooling devices so their reference counts, global pause mask and
+ * notifier updates cannot overtake one another while that lock is dropped.
+ * Lock ordering: thermal_pause_transition_lock before cpus_pause_lock.
+ */
+static DEFINE_MUTEX(thermal_pause_transition_lock);
 static DEFINE_MUTEX(cpus_pause_lock);
 static LIST_HEAD(thermal_pause_cdev_list);
 static struct device *thermal_pause_owner;
@@ -211,6 +218,7 @@ static void thermal_pause_update_work(struct work_struct *work)
 	struct thermal_pause_cdev *thermal_pause_cdev =
 		container_of(work, struct thermal_pause_cdev, pause_delayed_work.work);
 
+	mutex_lock(&thermal_pause_transition_lock);
 	mutex_lock(&cpus_pause_lock);
 
 retry:
@@ -270,6 +278,7 @@ retry:
 	}
 
 	mutex_unlock(&cpus_pause_lock);
+	mutex_unlock(&thermal_pause_transition_lock);
 }
 
 /**
@@ -322,7 +331,7 @@ static int thermal_pause_get_cur_state(struct thermal_cooling_device *cdev,
 {
 	struct thermal_pause_cdev *thermal_pause_cdev = cdev->devdata;
 
-	*level = thermal_pause_cdev->thermal_pause_level;
+	*level = READ_ONCE(thermal_pause_cdev->thermal_pause_level);
 
 	return 0;
 }
@@ -508,6 +517,8 @@ static int thermal_pause_remove(struct platform_device *pdev)
 		mutex_unlock(&cpus_pause_lock);
 		cancel_delayed_work_sync(&thermal_pause_cdev->pause_delayed_work);
 
+		/* Serialize this WALT release with other cooling-device workers. */
+		mutex_lock(&thermal_pause_transition_lock);
 		mutex_lock(&cpus_pause_lock);
 		if (thermal_pause_cdev->thermal_pause_level) {
 			/*
@@ -528,6 +539,7 @@ static int thermal_pause_remove(struct platform_device *pdev)
 		}
 		list_del(&thermal_pause_cdev->node);
 		mutex_unlock(&cpus_pause_lock);
+		mutex_unlock(&thermal_pause_transition_lock);
 	}
 
 	mutex_lock(&cpus_pause_lock);
