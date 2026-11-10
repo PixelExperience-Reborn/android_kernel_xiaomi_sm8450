@@ -63,6 +63,21 @@ def main():
             "of_node_put(cpu_phandle);" in cpu_probe and
             "bool duplicate;" in cpu_probe,
             "CPUFreq probe must have one owner and release matched CPU phandles")
+    policy_notifier = cpufreq.split(
+        "static int cpufreq_cdev_policy_event(", 1)[1].split(
+        "static struct notifier_block cpufreq_cdev_policy_nb", 1)[0]
+    require("event != CPUFREQ_CREATE_POLICY" in policy_notifier and
+            "queue_work(system_highpri_wq, &cdev_data->reg_work);" in policy_notifier and
+            "cpumask_test_cpu(cdev_data->cpu, policy->related_cpus)" in policy_notifier,
+            "CPUFreq policy creation must retry cooling registration asynchronously")
+    require(cpu_probe.index("cpufreq_register_notifier(") <
+            cpu_probe.index("cpuhp_setup_state("),
+            "policy notifier must be installed before hotplug callbacks")
+    require("cpufreq_unregister_notifier(" in cpu_remove and
+            cpu_remove.index("cpufreq_unregister_notifier(") <
+            cpu_remove.index("cpuhp_remove_state_nocalls(") <
+            cpu_remove.index("cancel_work_sync("),
+            "policy/hotplug event producers must stop before freeing worker state")
 
     require("CONFIG_QTI_DEVFREQ_CDEV=m" in config,
             "OEM GPU devfreq cooling module is not selected")
