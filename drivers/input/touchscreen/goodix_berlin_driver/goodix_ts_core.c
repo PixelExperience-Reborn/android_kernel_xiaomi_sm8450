@@ -2243,6 +2243,20 @@ static int goodix_ts_remove(struct platform_device *pdev)
 #if (GOODIX_ENABLE_DUMP_DEV)
 	goodix_dump_dev_exit();
 #endif
+	/* Stop panel callbacks and firmware checks before tearing down their users. */
+	if (core_data->init_stage >= CORE_INIT_STAGE2) {
+#ifdef CONFIG_DRM_MEDIATEK
+		mtk_disp_notifier_unregister(&core_data->pm_notifier);
+#elif IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
+		if (core_data->cookie)
+			panel_event_notifier_unregister(core_data->cookie);
+#elif defined(CONFIG_FB)
+		fb_unregister_client(&core_data->pm_notifier);
+#endif
+		cancel_work_sync(&core_data->resume_work);
+		cancel_work_sync(&core_data->self_check_work);
+	}
+
 	goodix_tools_exit(core_data);
 	goodix_fw_update_uninit(core_data);
 
@@ -2250,17 +2264,6 @@ static int goodix_ts_remove(struct platform_device *pdev)
 		gesture_module_exit(core_data);
 		inspect_module_exit(core_data);
 		hw_ops->irq_enable(core_data, false);
-#ifdef CONFIG_DRM_MEDIATEK
-        mtk_disp_notifier_unregister(&core_data->pm_notifier);
-#elif IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
-        if (core_data->cookie)
-            panel_event_notifier_unregister(core_data->cookie);
-#elif defined(CONFIG_FB)
-		fb_unregister_client(&core_data->pm_notifier);
-#endif
-		/* Stop panel-triggered resume and firmware self-check before teardown. */
-		cancel_work_sync(&core_data->resume_work);
-		cancel_work_sync(&core_data->self_check_work);
 		if (atomic_read(&ts_esd->esd_on))
 			goodix_ts_esd_off(core_data);
 
