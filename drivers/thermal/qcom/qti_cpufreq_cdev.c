@@ -9,6 +9,7 @@
 #include <linux/cpufreq.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/notifier.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_qos.h>
@@ -38,6 +39,7 @@ static DEFINE_MUTEX(qti_cpufreq_cdev_lock);
 static LIST_HEAD(qti_cpufreq_cdev_list);
 static enum cpuhp_state cpu_hp_online;
 static struct device *cpufreq_cdev_owner;
+static bool cpufreq_policy_notifier_registered;
 
 static unsigned int state_to_cpufreq(struct cpufreq_cdev_device *cdev_data,
 				    unsigned long state)
@@ -197,10 +199,46 @@ static int cpufreq_cdev_hp_online(unsigned int online_cpu)
 	return 0;
 }
 
+/*
+ * An online CPU can precede its CPUFreq policy.  Recheck cooling
+ * registration when the policy is actually created, not only at hotplug.
+ * The callback must only queue work: policy creation holds CPUFreq locks.
+ */
+static int cpufreq_cdev_policy_event(struct notifier_block *nb,
+				    unsigned long event, void *data)
+{
+	struct cpufreq_policy *policy = data;
+	struct cpufreq_cdev_device *cdev_data;
+
+	if (event != CPUFREQ_CREATE_POLICY)
+		return NOTIFY_DONE;
+
+	mutex_lock(&qti_cpufreq_cdev_lock);
+	list_for_each_entry(cdev_data, &qti_cpufreq_cdev_list, node) {
+		if (READ_ONCE(cdev_data->cdev) ||
+		    !cpumask_test_cpu(cdev_data->cpu, policy->related_cpus))
+			continue;
+		queue_work(system_highpri_wq, &cdev_data->reg_work);
+	}
+	mutex_unlock(&qti_cpufreq_cdev_lock);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block cpufreq_cdev_policy_nb = {
+	.notifier_call = cpufreq_cdev_policy_event,
+};
+
 static int cpufreq_cdev_remove(struct platform_device *pdev)
 {
 	struct cpufreq_cdev_device *cdev_data;
 
+	/* Stop producers before draining the registration workqueue. */
+	if (cpufreq_policy_notifier_registered) {
+		cpufreq_unregister_notifier(&cpufreq_cdev_policy_nb,
+					    CPUFREQ_POLICY_NOTIFIER);
+		cpufreq_policy_notifier_registered = false;
+	}
 	/* Hotplug teardown waits for callbacks: do not hold the list lock. */
 	if (cpu_hp_online) {
 		cpuhp_remove_state_nocalls(cpu_hp_online);
@@ -299,6 +337,13 @@ static int cpufreq_cdev_probe(struct platform_device *pdev)
 		list_add_tail(&cdev_data->node, &qti_cpufreq_cdev_list);
 		mutex_unlock(&qti_cpufreq_cdev_lock);
 	}
+
+	/* Register the policy notifier before CPU-online callbacks fire. */
+	ret = cpufreq_register_notifier(&cpufreq_cdev_policy_nb,
+					CPUFREQ_POLICY_NOTIFIER);
+	if (ret)
+		goto err_remove;
+	cpufreq_policy_notifier_registered = true;
 
 	/* Callbacks can queue work; the list is now fully initialized. */
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "thermal-cpu/cdev:online",
