@@ -28,6 +28,7 @@ struct limits_freq_map {
 
 struct cc_limits_data {
 	struct list_head		node;
+	struct device			*owner;
 	int				map_freq_ct;
 	int				thermal_state;
 	int				cpu_map[CPU_MAP_CT];
@@ -228,7 +229,7 @@ opp_err_exit:
 	return ERR_PTR(-EPROBE_DEFER);
 }
 
-static int cc_init(struct device_node *np, int *cpus)
+static int cc_init(struct device *dev, struct device_node *np, int *cpus)
 {
 	struct cc_limits_data *cc_cdev;
 	int idx = 0, ret = 0, added_requests = 0;
@@ -240,8 +241,9 @@ static int cc_init(struct device_node *np, int *cpus)
 			cpus[1] == cc_cdev->cpu_map[1]) ||
 			(cpus[0] == cc_cdev->cpu_map[1] &&
 			cpus[1] == cc_cdev->cpu_map[0])) {
+			ret = cc_cdev->owner == dev ? 0 : -EBUSY;
 			mutex_unlock(&cc_list_lock);
-			return 0;
+			return ret;
 		}
 	}
 	policy = cpufreq_cpu_get(cpus[0]);
@@ -264,6 +266,7 @@ static int cc_init(struct device_node *np, int *cpus)
 		mutex_unlock(&cc_list_lock);
 		return ret;
 	}
+	cc_cdev->owner = dev;
 	for (idx = 0; idx < CPU_MAP_CT; idx++) {
 		policy = cpufreq_cpu_get(cc_cdev->cpu_map[idx]);
 		if (!policy) {
@@ -305,31 +308,59 @@ cc_err_exit:
 	return ret;
 }
 
+static int cc_cooling_remove(struct platform_device *pdev);
+
 static int cc_cooling_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 	struct device_node *dev_phandle, *subsys_np = NULL;
 	struct device *cpu_dev;
-	int ret = 0, idx = 0, cpu;
-	u32 cpu_map[CPU_MAP_CT];
+	int ret = -EINVAL, idx, cpu;
+	bool found = false;
 
 	for_each_available_child_of_node(np, subsys_np) {
+		int cpu_map[CPU_MAP_CT] = { -1, -1 };
+
+		found = true;
 		for (idx = 0; idx < CPU_MAP_CT; idx++) {
 			dev_phandle = of_parse_phandle(subsys_np, "qcom,cpus",
 							idx);
+			if (!dev_phandle) {
+				dev_err(dev, "missing qcom,cpus[%d] for %pOF\n",
+					idx, subsys_np);
+				ret = -EINVAL;
+				goto err_put_child;
+			}
 			for_each_possible_cpu(cpu) {
 				cpu_dev = get_cpu_device(cpu);
-				if (cpu_dev && cpu_dev->of_node ==
-						dev_phandle) {
+				if (cpu_dev && cpu_dev->of_node == dev_phandle) {
 					cpu_map[idx] = cpu;
 					break;
 				}
 			}
+			of_node_put(dev_phandle);
+			if (cpu_map[idx] < 0) {
+				dev_err(dev, "no CPU device for qcom,cpus[%d] in %pOF\n",
+					idx, subsys_np);
+				ret = -EPROBE_DEFER;
+				goto err_put_child;
+			}
 		}
-		ret = cc_init(subsys_np, cpu_map);
+		ret = cc_init(dev, subsys_np, cpu_map);
+		if (ret)
+			goto err_put_child;
 	}
 
+	if (!found)
+		dev_err(dev, "no available CPU voltage cooling clusters\n");
+
+	return found ? 0 : -EINVAL;
+
+err_put_child:
+	/* for_each_available_child_of_node() would otherwise leak this ref. */
+	of_node_put(subsys_np);
+	cc_cooling_remove(pdev);
 	return ret;
 }
 
@@ -340,6 +371,8 @@ static int cc_cooling_remove(struct platform_device *pdev)
 
 	mutex_lock(&cc_list_lock);
 	list_for_each_entry_safe(cc_cdev, cc_next, &cc_cdev_list, node) {
+		if (cc_cdev->owner != &pdev->dev)
+			continue;
 		if (cc_cdev->cdev)
 			thermal_cooling_device_unregister(cc_cdev->cdev);
 
