@@ -763,6 +763,8 @@ struct goodix_ts_core {
 	struct input_dev *input_dev;
 	struct input_dev *pen_dev;
 	struct mutex cmd_lock;
+	/* One-shot firmware/setup thread must finish before device teardown. */
+	struct task_struct *init_thread;
 	/* TODO counld we remove this from core data? */
 	struct goodix_ts_event ts_event;
 

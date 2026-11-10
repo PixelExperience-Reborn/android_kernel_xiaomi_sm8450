@@ -2128,14 +2128,24 @@ static int goodix_start_later_init(struct goodix_ts_core *cd)
 {
 	struct device *dev = cd->bus->dev;
 	struct task_struct *init_thrd;
-	/* create and run update thread */
-	init_thrd = kthread_run(goodix_later_init_thread, cd,
-				"goodix_init_thread");
-	if (IS_ERR_OR_NULL(init_thrd)) {
-		ts_err(dev, "Failed to create update thread:%ld",
-		       PTR_ERR(init_thrd));
-		return -EFAULT;
+	int ret;
+
+	/*
+	 * Create the one-shot setup thread stopped. Retain a task reference
+	 * before waking it: initialization may finish and exit immediately,
+	 * but remove() must still be able to kthread_stop() and join it.
+	 */
+	init_thrd = kthread_create(goodix_later_init_thread, cd,
+				  "goodix_init_thread");
+	if (IS_ERR(init_thrd)) {
+		ret = PTR_ERR(init_thrd);
+		ts_err(dev, "Failed to create init thread: %d", ret);
+		return ret;
 	}
+
+	get_task_struct(init_thrd);
+	cd->init_thread = init_thrd;
+	wake_up_process(init_thrd);
 	return 0;
 }
 
@@ -2181,6 +2191,8 @@ static int goodix_ts_probe(struct platform_device *pdev)
 	core_data->bus = bus_interface;
 	core_data->board_data = board_data;
 	platform_set_drvdata(pdev, core_data);
+	/* Sysfs/debug users and the asynchronous setup thread may use this. */
+	mutex_init(&core_data->cmd_lock);
 
 	/* get GPIO resource */
 	ret = goodix_ts_gpio_setup(core_data);
@@ -2217,13 +2229,16 @@ static int goodix_ts_probe(struct platform_device *pdev)
 
 	core_data->init_stage = CORE_INIT_STAGE1;
 
-	/* Try start a thread to get config-bin info */
-	goodix_start_later_init(core_data);
+	/* The driver is not ready if the asynchronous IC setup cannot start. */
+	ret = goodix_start_later_init(core_data);
+	if (ret)
+		goto err_tools;
 
-	mutex_init(&core_data->cmd_lock);
 	ts_info(bus_interface->dev, "goodix_ts_core probe success");
 	return 0;
 
+err_tools:
+	goodix_tools_exit(core_data);
 err_out:
 	goodix_fw_update_uninit(core_data);
 	goodix_ts_power_off(core_data);
@@ -2240,6 +2255,15 @@ static int goodix_ts_remove(struct platform_device *pdev)
 	struct goodix_ts_esd *ts_esd = &core_data->ts_esd;
 
 	ts_info(dev, "platform device[%d] remove", pdev->id);
+	/*
+	 * No firmware update, stage-2 init or panel registration may outlive
+	 * the platform device. Wait before destroying their shared resources.
+	 */
+	if (core_data->init_thread) {
+		kthread_stop(core_data->init_thread);
+		put_task_struct(core_data->init_thread);
+		core_data->init_thread = NULL;
+	}
 #if (GOODIX_ENABLE_DUMP_DEV)
 	goodix_dump_dev_exit();
 #endif
@@ -2271,9 +2295,10 @@ static int goodix_ts_remove(struct platform_device *pdev)
 		goodix_ts_pen_dev_remove(core_data);
 		goodix_ts_sysfs_exit(core_data);
 		goodix_ts_procfs_exit(core_data);
-		goodix_ts_power_off(core_data);
 	}
 
+	/* Stage-1 or failed asynchronous stage-2 must also power down. */
+	goodix_ts_power_off(core_data);
 	return 0;
 }
 

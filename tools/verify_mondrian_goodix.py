@@ -57,6 +57,26 @@ def main():
             "system PM fallback is required until the mondrian panel DT link is verified")
     require("cancel_work_sync(&core_data->self_check_work);" in core,
             "Goodix teardown must finish firmware self-check work before deallocation")
+    start = core.split("static int goodix_start_later_init(", 1)[1].split(
+        "static int goodix_ts_probe(", 1)[0]
+    probe = core.split("static int goodix_ts_probe(", 1)[1].split(
+        "static int goodix_ts_remove(", 1)[0]
+    require("struct task_struct *init_thread;" in header,
+            "Goodix setup thread lifetime must be owned by core_data")
+    require("kthread_create(" in start and "kthread_run(" not in start and
+            start.index("get_task_struct(init_thrd);") <
+            start.index("cd->init_thread = init_thrd;") <
+            start.index("wake_up_process(init_thrd);"),
+            "Goodix init thread must be retained before it can finish")
+    require(probe.index("mutex_init(&core_data->cmd_lock);") <
+            probe.index("goodix_fw_update_init(core_data);") <
+            probe.index("goodix_tools_init(core_data);") <
+            probe.index("ret = goodix_start_later_init(core_data);"),
+            "Goodix command mutex must exist before user interfaces or worker")
+    require("if (ret)\n\t\tgoto err_tools;" in probe and
+            probe.index("err_tools:\n\tgoodix_tools_exit(core_data);") <
+            probe.index("err_out:\n\tgoodix_fw_update_uninit(core_data);"),
+            "Failed Goodix thread creation must unwind debug and firmware state")
     teardown = core.split("static int goodix_ts_remove(", 1)[1]
     require(teardown.index("panel_event_notifier_unregister(") <
             teardown.index("goodix_fw_update_uninit(core_data);"),
@@ -64,6 +84,14 @@ def main():
     require(teardown.index("cancel_work_sync(&core_data->self_check_work);") <
             teardown.index("goodix_fw_update_uninit(core_data);"),
             "firmware self-check must stop before its update state is freed")
+    require(teardown.index("kthread_stop(core_data->init_thread);") <
+            teardown.index("put_task_struct(core_data->init_thread);") <
+            teardown.index("panel_event_notifier_unregister(") <
+            teardown.index("goodix_fw_update_uninit(core_data);"),
+            "Goodix thread must be joined before notifier and firmware teardown")
+    require(teardown.rfind("goodix_ts_power_off(core_data);") >
+            teardown.index("goodix_ts_procfs_exit(core_data);"),
+            "Goodix stage-1 or failed stage-2 removal must power down touch IC")
     driver_make = (DRIVER / "Makefile").read_text()
     require("goodix_brl_spi.o" in driver_make and "goodix_brl_i2c.o" not in driver_make,
             "mondrian Goodix must build SPI without I2C")
