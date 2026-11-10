@@ -841,7 +841,7 @@ static void goodix_ts_procfs_exit(struct goodix_ts_core *cd)
 
 #if IS_ENABLED(CONFIG_OF)
 
-#ifdef CONFIG_DRM_PANEL_NOTIFY
+#if IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
 static int goodix_check_panel_dt(struct device_node *np,
 				      struct goodix_ts_board_data *board_data)
 {
@@ -1021,7 +1021,7 @@ static int goodix_parse_dt(struct device *dev,
 			sizeof(board_data->cfg_bin_name));
 	}
 
-#ifdef CONFIG_DRM_PANEL_NOTIFY
+#if IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
     r = goodix_check_panel_dt(node, board_data);
     if (r)
         ts_err(dev, "check panel dt failed");
@@ -1826,7 +1826,7 @@ static int goodix_ts_mtk_drm_notifier_callback(struct notifier_block *self,
 
 	return 0;
 }
-#elif defined(CONFIG_DRM_PANEL_NOTIFY)
+#elif IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
 static void goodix_ts_drm_notifier_callback(enum panel_event_notifier_tag tag,
                 struct panel_event_notification *notification, void *client_data)
 {
@@ -1886,7 +1886,9 @@ int goodix_ts_fb_notifier_callback(struct notifier_block *self,
 
 	return 0;
 }
-#elif defined(CONFIG_PM)
+#endif
+
+#ifdef CONFIG_PM
 /**
  * goodix_ts_pm_suspend - PM suspend function
  * Called by kernel during system suspend phrase
@@ -1972,11 +1974,14 @@ int goodix_ts_stage2_init(struct goodix_ts_core *cd)
 	}
 	ts_info(dev, "success register irq");
 
+	/* Notifiers can schedule resume immediately after registration. */
+	INIT_WORK(&cd->resume_work, goodix_ts_resume_work);
+
 #ifdef CONFIG_DRM_MEDIATEK
     cd->pm_notifier.notifier_call = goodix_ts_mtk_drm_notifier_callback;
     if (mtk_disp_notifier_register(GOODIX_CORE_DRIVER_NAME, &cd->pm_notifier))
         ts_err(dev, "Failed to register disp notifier");
-#elif defined(CONFIG_DRM_PANEL_NOTIFY)
+#elif IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
     if (cd->board_data->active_panel) {
         cd->cookie = panel_event_notifier_register(
                     PANEL_EVENT_NOTIFICATION_PRIMARY,
@@ -1984,8 +1989,11 @@ int goodix_ts_stage2_init(struct goodix_ts_core *cd)
                     cd->board_data->active_panel,
                     &goodix_ts_drm_notifier_callback,
                     cd);
-        if (!cd->cookie)
-            ts_err(dev, "Failed to register panel event notifier");
+        if (IS_ERR(cd->cookie)) {
+            ts_err(dev, "Failed to register panel event notifier: %ld",
+                   PTR_ERR(cd->cookie));
+            cd->cookie = NULL;
+        }
     }
 #elif defined(CONFIG_FB)
     cd->pm_notifier.notifier_call = goodix_ts_fb_notifier_callback;
@@ -2007,8 +2015,6 @@ int goodix_ts_stage2_init(struct goodix_ts_core *cd)
 
 	/* inspect init */
 	inspect_module_init(cd);
-
-	INIT_WORK(&cd->resume_work, goodix_ts_resume_work);
 
 	/* Do self check on first boot */
 	INIT_WORK(&cd->self_check_work, goodix_self_check);
@@ -2246,12 +2252,15 @@ static int goodix_ts_remove(struct platform_device *pdev)
 		hw_ops->irq_enable(core_data, false);
 #ifdef CONFIG_DRM_MEDIATEK
         mtk_disp_notifier_unregister(&core_data->pm_notifier);
-#elif defined(CONFIG_DRM_PANEL_NOTIFY)
+#elif IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
         if (core_data->cookie)
             panel_event_notifier_unregister(core_data->cookie);
 #elif defined(CONFIG_FB)
 		fb_unregister_client(&core_data->pm_notifier);
 #endif
+		/* Stop panel-triggered resume and firmware self-check before teardown. */
+		cancel_work_sync(&core_data->resume_work);
+		cancel_work_sync(&core_data->self_check_work);
 		if (atomic_read(&ts_esd->esd_on))
 			goodix_ts_esd_off(core_data);
 
@@ -2296,7 +2305,7 @@ static struct platform_driver goodix_ts_driver = {
 	.driver = {
 		.name = GOODIX_CORE_DRIVER_NAME,
 		.owner = THIS_MODULE,
-#if defined(CONFIG_PM) && !defined(CONFIG_DRM_MEDIATEK) && !defined(CONFIG_DRM_PANEL_NOTIFY) && !defined(CONFIG_FB)
+#if defined(CONFIG_PM) && !defined(CONFIG_DRM_MEDIATEK) && !defined(CONFIG_FB)
 		.pm = &dev_pm_ops,
 #endif
 	},
