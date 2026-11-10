@@ -218,16 +218,22 @@ static struct cc_limits_data *opp_init(int *cpus)
 		return ERR_PTR(-ENODEV);
 	}
 	table_ct[0] = fetch_opp_table(cpu1_dev, &cpu1_freq_table);
-	if (table_ct[0] <= 0)
+	if (table_ct[0] <= 0) {
+		ret = table_ct[0] < 0 ? table_ct[0] : -EPROBE_DEFER;
 		goto opp_err_exit;
+	}
 
 	table_ct[1] = fetch_opp_table(cpu2_dev, &cpu2_freq_table);
-	if (table_ct[1] <= 0)
+	if (table_ct[1] <= 0) {
+		ret = table_ct[1] < 0 ? table_ct[1] : -EPROBE_DEFER;
 		goto opp_err_exit;
+	}
 
 	cc_cdev = kzalloc(sizeof(*cc_cdev), GFP_KERNEL);
-	if (!cc_cdev)
+	if (!cc_cdev) {
+		ret = -ENOMEM;
 		goto opp_err_exit;
+	}
 	mutex_init(&cc_cdev->state_lock);
 	cpu_freq_table[0] = cpu1_freq_table;
 	cpu_freq_table[1] = cpu2_freq_table;
@@ -247,7 +253,7 @@ opp_err_exit:
 		kfree(cc_cdev);
 	}
 
-	return ERR_PTR(-EPROBE_DEFER);
+	return ERR_PTR(ret);
 }
 
 static int cc_init(struct device *dev, struct device_node *np, int *cpus)
