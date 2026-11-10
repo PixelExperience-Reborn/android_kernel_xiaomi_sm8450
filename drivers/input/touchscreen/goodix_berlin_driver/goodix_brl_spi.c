@@ -54,6 +54,12 @@ static int goodix_spi_read(struct device *dev, unsigned int addr,
 	struct spi_message spi_msg;
 	int ret = 0;
 
+	prefix_len = ic_type == IC_TYPE_BERLIN_A ?
+			SPI_READ_PREFIX_LEN : SPI_READ_PREFIX_LEN - 1;
+	/* Both shared transfer buffers have a fixed 10 KiB capacity. */
+	if (len > GOODIX_SPI_TRANS_MAX_LEN - prefix_len)
+		return -EMSGSIZE;
+
 	mutex_lock(&ts_dev->bus.spi_lock);
 	spi_message_init(&spi_msg);
 	memset(&xfers, 0, sizeof(xfers));
@@ -71,10 +77,6 @@ static int goodix_spi_read(struct device *dev, unsigned int addr,
 
 	xfers.tx_buf = tx_buf;
 	xfers.rx_buf = rx_buf;
-	if (ic_type == IC_TYPE_BERLIN_A)
-		prefix_len = SPI_READ_PREFIX_LEN;
-	else
-		prefix_len = SPI_READ_PREFIX_LEN - 1;
 	xfers.len = prefix_len + len;
 	xfers.cs_change = 0;
 	spi_message_add_tail(&xfers, &spi_msg);
@@ -107,6 +109,10 @@ static int goodix_spi_write(struct device *dev, unsigned int addr,
 	struct spi_transfer xfers;
 	struct spi_message spi_msg;
 	int ret = 0;
+
+	/* Check before memcpy() and the SPI controller transfer. */
+	if (len > GOODIX_SPI_TRANS_MAX_LEN - SPI_WRITE_PREFIX_LEN)
+		return -EMSGSIZE;
 
 	mutex_lock(&ts_dev->bus.spi_lock);
 	spi_message_init(&spi_msg);
@@ -196,7 +202,12 @@ static int goodix_spi_probe(struct spi_device *spi)
 	return 0;
 
 err_pdev:
-	kfree(ts_dev);
+	/*
+	 * platform_device_register() has initialized pdev.dev.
+	 * Its release callback, not an early kfree(), owns ts_dev now.
+	 */
+	spi_set_drvdata(spi, NULL);
+	platform_device_put(&ts_dev->pdev);
 	ts_info(&spi->dev, "spi probe out, %d", ret);
 	return ret;
 }

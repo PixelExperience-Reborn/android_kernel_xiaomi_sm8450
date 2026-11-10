@@ -28,6 +28,26 @@ def main():
     require('strstr(ic_name, "gt9916S")' in utils, "Berlin D identification missing")
     require('bus_inf->ic_type = IC_TYPE_BERLIN_D' in utils, "Berlin D protocol missing")
     require("SPI_READ_PREFIX_LEN - 1" in spi, "Berlin D read framing missing")
+    read = spi.split("static int goodix_spi_read(", 1)[1].split(
+        "static int goodix_spi_write(", 1)[0]
+    write = spi.split("static int goodix_spi_write(", 1)[1].split(
+        "static void goodix_pdev_release(", 1)[0]
+    require(read.index("prefix_len = ic_type == IC_TYPE_BERLIN_A ?") <
+            read.index("if (len > GOODIX_SPI_TRANS_MAX_LEN - prefix_len)") <
+            read.index("mutex_lock(&ts_dev->bus.spi_lock);") <
+            read.index("xfers.len = prefix_len + len;") <
+            read.index("spi_sync(spi, &spi_msg);"),
+            "SPI read must bound header and payload before touching fixed RX/TX buffers")
+    require(write.index("if (len > GOODIX_SPI_TRANS_MAX_LEN - SPI_WRITE_PREFIX_LEN)") <
+            write.index("mutex_lock(&ts_dev->bus.spi_lock);") <
+            write.index("memcpy(&tx_buf[SPI_WRITE_PREFIX_LEN], data, len);") <
+            write.index("spi_sync(spi, &spi_msg);"),
+            "SPI write must reject an oversized payload before memcpy and transfer")
+    pdev_fail = spi.split("err_pdev:", 1)[1].split("#if (LINUX_VERSION_CODE", 1)[0]
+    require("spi_set_drvdata(spi, NULL);" in pdev_fail and
+            "platform_device_put(&ts_dev->pdev);" in pdev_fail and
+            "kfree(ts_dev);" not in pdev_fail,
+            "Initialized platform device must release via its device callback")
     require("goodix_spi_bus_init()" in core, "SPI driver registration missing")
     require("u16 scan_rate = 0;" in (DRIVER / "goodix_ts_replay.c").read_text(),
             "Replay must not publish uninitialized scan-rate data")
