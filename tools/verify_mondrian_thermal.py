@@ -144,6 +144,19 @@ def main():
     require("pr_warn_ratelimited(" in walt_resume and
             "goto unlock;" in walt_resume,
             "Invalid WALT resume must be reported and leave without decrementing refs")
+    walt_hotplug = walt.split("static int walt_pause_hp_online(", 1)[1].split(
+        "void walt_pause_init(", 1)[0]
+    walt_replay = walt.split("static void walt_pause_online_workfn(", 1)[1].split(
+        "static int walt_pause_hp_online(", 1)[0]
+    require("schedule_work(&walt_pause_online_work);" in walt_hotplug and
+            "pause_state" not in walt_hotplug and
+            "ref_count" not in walt_hotplug,
+            "CPUHP callback must only queue replay, not sample unlocked WALT refs")
+    require(walt_replay.index("mutex_lock(&pause_lock);") <
+            walt_replay.index("pause_cpu_state->ref_count") <
+            walt_replay.index("pause_cpus(&re_pause_cpus);") <
+            walt_replay.index("mutex_unlock(&pause_lock);"),
+            "Deferred WALT hotplug replay must inspect refs under pause_lock")
     require("static DEFINE_MUTEX(thermal_pause_transition_lock);" in pause,
             "Thermal WALT transitions need a separate serialisation lock")
     require(pause_update.index("mutex_lock(&thermal_pause_transition_lock);") <
