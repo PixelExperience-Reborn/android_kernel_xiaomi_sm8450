@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
-          make O="$RUNNER_TEMP/mondrian-out" -j3 Image modules \
+          make O="$RUNNER_TEMP/mondrian-out" -k -j3 Image modules \
             2>&1 | tee -a "$RUNNER_TEMP/mondrian-kernel-compile.log"
           test -s "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image"
           test -s "$RUNNER_TEMP/mondrian-out/Module.symvers"
