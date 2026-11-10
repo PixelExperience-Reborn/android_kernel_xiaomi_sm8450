@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "drivers/thermal/qcom/cpu_voltage_cooling.c"
 MAKE = ROOT / "drivers/thermal/qcom/Makefile"
 CONFIG = ROOT / "arch/arm64/configs/vendor/mondrian_GKI.config"
+GPU_SRC = ROOT / "drivers/thermal/qcom/qti_devfreq_cdev.c"
 
 
 def require(condition, detail):
@@ -21,6 +22,31 @@ def main():
     code = SRC.read_text(encoding="utf-8")
     make = MAKE.read_text(encoding="utf-8")
     config = CONFIG.read_text(encoding="utf-8")
+    gpu = GPU_SRC.read_text(encoding="utf-8")
+
+    require("CONFIG_QTI_DEVFREQ_CDEV=m" in config,
+            "OEM GPU devfreq cooling module is not selected")
+    require("obj-$(CONFIG_QTI_DEVFREQ_CDEV) += qti_devfreq_cdev.o" in make,
+            "OEM GPU cooling driver is not linked")
+    work = gpu.split("static void devfreq_cdev_work(", 1)[1].split(
+        "static int devfreq_cdev_probe(", 1)[0]
+    gpu_remove = gpu.split("static int devfreq_cdev_remove(", 1)[1].split(
+        "static const struct of_device_id", 1)[0]
+    require(work.index("if (freq_ct <= 0)") < work.index("kcalloc(freq_ct"),
+            "GPU OPP count must be validated before allocating a table")
+    require("kfree(freq_table);" in work and
+            "cdev_data->freq_table = NULL;" in work,
+            "GPU error path must free its actual OPP table")
+    require(work.index("dev_pm_qos_add_request(") <
+            work.index("dev_pm_qos_remove_request("),
+            "GPU QoS removal cannot precede successful insertion")
+    require("platform_set_drvdata(pdev, cdev_data);" in gpu,
+            "GPU cooling device cannot use a global state pointer")
+    require(gpu_remove.index("cancel_delayed_work_sync(") <
+            gpu_remove.index("thermal_cooling_device_unregister("),
+            "GPU delayed registration must stop before teardown")
+    require("of_node_put(cdev_data->np);" in gpu_remove,
+            "GPU cooling must release its Device Tree node")
 
     require("CONFIG_QTI_CPU_VOLTAGE_COOLING_DEVICE=m" in config,
             "OEM cooling module is not selected")
@@ -59,7 +85,7 @@ def main():
             "thermal state mutex was not initialized")
     require("ret = -ENOMEM;" in opp and "return ERR_PTR(ret);" in opp,
             "OPP failures must preserve their actual error codes")
-    print("[PASS] mondrian OEM CPU-voltage cooling DT, QoS and lifetime source checks")
+    print("[PASS] mondrian OEM CPU-voltage and GPU-devfreq cooling safety checks")
     print("[PENDING] LLVM build and runtime thermal transitions on SM8475")
 
 
