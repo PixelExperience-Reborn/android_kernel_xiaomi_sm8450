@@ -136,7 +136,7 @@ def main():
     require(pause_update.index("mutex_lock(&thermal_pause_transition_lock);") <
             pause_update.index("mutex_lock(&cpus_pause_lock);") <
             pause_update.index("thermal_resume_work(thermal_pause_cdev);") <
-            pause_update.index("mutex_unlock(&cpus_pause_lock);\\n\\tmutex_unlock(&thermal_pause_transition_lock);"),
+            pause_update.index("mutex_unlock(&cpus_pause_lock);\n\tmutex_unlock(&thermal_pause_transition_lock);"),
             "Cooling workers must serialise across the unlocked WALT call")
     require(pause_remove.index("cancel_delayed_work_sync(") <
             pause_remove.index("mutex_lock(&thermal_pause_transition_lock);") <
