@@ -44,6 +44,7 @@ struct thermal_pause_cdev {
 
 static DEFINE_MUTEX(cpus_pause_lock);
 static LIST_HEAD(thermal_pause_cdev_list);
+static struct device *thermal_pause_owner;
 
 static struct cpumask cpus_in_max_cooling_level;
 static enum cpuhp_state cpu_hp_online;
@@ -356,6 +357,10 @@ static void thermal_pause_register_cdev(struct work_struct *work)
 	int ret = 0;
 	cpumask_t cpus_online;
 
+	/* Repeated online notifications must not register a duplicate cdev. */
+	if (READ_ONCE(thermal_pause_cdev->cdev))
+		return;
+
 	cpumask_and(&cpus_online,
 			&thermal_pause_cdev->cpu_mask,
 			cpu_online_mask);
@@ -379,6 +384,8 @@ static void thermal_pause_register_cdev(struct work_struct *work)
 			thermal_pause_cdev->cdev_name);
 }
 
+static int thermal_pause_remove(struct platform_device *pdev);
+
 static int thermal_pause_probe(struct platform_device *pdev)
 {
 	int ret = 0, cpu = 0;
@@ -391,8 +398,15 @@ static int thermal_pause_probe(struct platform_device *pdev)
 	unsigned long mask = 0;
 	const char *alias;
 
-	INIT_LIST_HEAD(&thermal_pause_cdev_list);
+	/* The OEM implementation has one global hotplug callback and list. */
+	mutex_lock(&cpus_pause_lock);
+	if (thermal_pause_owner) {
+		mutex_unlock(&cpus_pause_lock);
+		return -EBUSY;
+	}
+	thermal_pause_owner = &pdev->dev;
 	cpumask_clear(&cpus_in_max_cooling_level);
+	mutex_unlock(&cpus_pause_lock);
 
 	for_each_available_child_of_node(np, subsys_np) {
 
@@ -420,7 +434,8 @@ static int thermal_pause_probe(struct platform_device *pdev)
 
 		if (!thermal_pause_cdev) {
 			of_node_put(subsys_np);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto err_remove;
 		}
 		ret = of_property_read_string(subsys_np,
 				"qcom,cdev-alias", &alias);
@@ -446,44 +461,79 @@ static int thermal_pause_probe(struct platform_device *pdev)
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "thermal-pause/cdev:online",
 				thermal_pause_hp_online, NULL);
 	if (ret < 0)
-		return ret;
+		goto err_remove;
 	cpu_hp_online = ret;
 
 	return 0;
+
+err_remove:
+	thermal_pause_remove(pdev);
+	return ret;
 }
 
 static int thermal_pause_remove(struct platform_device *pdev)
 {
-	struct thermal_pause_cdev *thermal_pause_cdev = NULL, *next = NULL;
-	int ret = 0;
+	struct thermal_pause_cdev *thermal_pause_cdev, *next;
+	int ret = 0, err;
 
+	/*
+	 * Stop CPU-online callbacks first. CPUHP teardown itself can wait for
+	 * callbacks that acquire cpus_pause_lock; never hold the list lock.
+	 */
 	if (cpu_hp_online) {
 		cpuhp_remove_state_nocalls(cpu_hp_online);
 		cpu_hp_online = 0;
 	}
 
-	mutex_lock(&cpus_pause_lock);
 	list_for_each_entry_safe(thermal_pause_cdev, next,
-			&thermal_pause_cdev_list, node) {
+				 &thermal_pause_cdev_list, node) {
+		/* After CPUHP removal, no new registration work is produced. */
+		cancel_work_sync(&thermal_pause_cdev->reg_work);
 
-		/* for each asserted cooling device, resume the CPUs */
-		if (thermal_pause_cdev->thermal_pause_level) {
-			thermal_pause_cdev->thermal_pause_req = THERMAL_NO_CPU_PAUSE;
-			queue_delayed_work(system_highpri_wq,
-					   &thermal_pause_cdev->pause_delayed_work, 0);
+		/*
+		 * A thermal set_cur_state() callback can queue delayed work.
+		 * Unregister the cooling device before draining that worker.
+		 * Neither operation may hold cpus_pause_lock.
+		 */
+		if (thermal_pause_cdev->cdev) {
+			thermal_cooling_device_unregister(thermal_pause_cdev->cdev);
+			thermal_pause_cdev->cdev = NULL;
 		}
 
-		if (thermal_pause_cdev->cdev)
-			thermal_cooling_device_unregister(
-					thermal_pause_cdev->cdev);
+		mutex_lock(&cpus_pause_lock);
+		/* Prevent a running worker from requesting another retry. */
+		thermal_pause_cdev->thermal_pause_req =
+			thermal_pause_cdev->thermal_pause_level;
+		thermal_pause_cdev->delayed_work_retries = 0;
+		mutex_unlock(&cpus_pause_lock);
+		cancel_delayed_work_sync(&thermal_pause_cdev->pause_delayed_work);
+
+		mutex_lock(&cpus_pause_lock);
+		if (thermal_pause_cdev->thermal_pause_level) {
+			/*
+			 * Balance the WALT pause refcount and preserve the
+			 * existing multi-cdev mask and notifier semantics.
+			 */
+			thermal_pause_cdev->thermal_pause_req = THERMAL_NO_CPU_PAUSE;
+			err = thermal_resume_work(thermal_pause_cdev);
+			if (err < 0) {
+				pr_err("Failed to release WALT pause for %s: %d\n",
+				       thermal_pause_cdev->cdev_name, err);
+				if (!ret)
+					ret = err;
+			} else {
+				thermal_pause_cdev->thermal_pause_level =
+					THERMAL_NO_CPU_PAUSE;
+			}
+		}
 		list_del(&thermal_pause_cdev->node);
+		mutex_unlock(&cpus_pause_lock);
 	}
 
+	mutex_lock(&cpus_pause_lock);
+	thermal_pause_owner = NULL;
 	mutex_unlock(&cpus_pause_lock);
 
-	/* if the resume failed, thermal still controls the CPUs.
-	 * ensure that the error is passed to the caller.
-	 */
 	return ret;
 }
 
