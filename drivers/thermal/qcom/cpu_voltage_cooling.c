@@ -31,6 +31,7 @@ struct cc_limits_data {
 	struct device			*owner;
 	int				map_freq_ct;
 	int				thermal_state;
+	struct mutex			state_lock;
 	int				cpu_map[CPU_MAP_CT];
 	struct limits_freq_map		*map_freq;
 	struct freq_qos_request		cc_qos_req[CPU_MAP_CT];
@@ -45,15 +46,16 @@ static int cc_set_cur_state(struct thermal_cooling_device *cdev,
 				 unsigned long state)
 {
 	struct cc_limits_data *cc_cdev = cdev->devdata;
-	int idx = 0, ret = 0;
+	int idx, ret = 0;
+	unsigned long old_state;
 
 	if (state > cc_cdev->map_freq_ct)
 		return -EINVAL;
 
-	if (state == cc_cdev->thermal_state)
-		return 0;
-
-	cc_cdev->thermal_state = state;
+	mutex_lock(&cc_cdev->state_lock);
+	old_state = cc_cdev->thermal_state;
+	if (state == old_state)
+		goto out_unlock;
 
 	for (idx = 0; idx < CPU_MAP_CT; idx++) {
 		pr_debug("Mitigate CPU:%d to freq:%lu\n", cc_cdev->cpu_map[idx],
@@ -61,9 +63,19 @@ static int cc_set_cur_state(struct thermal_cooling_device *cdev,
 		ret = freq_qos_update_request(&cc_cdev->cc_qos_req[idx],
 				cc_cdev->map_freq[state].frequency[idx]);
 		if (ret < 0)
-			return ret;
+			goto rollback;
 	}
-	return 0;
+	cc_cdev->thermal_state = state;
+	goto out_unlock;
+
+rollback:
+	/* Do not publish a new thermal state if one of its QoS votes failed. */
+	while (--idx >= 0)
+		freq_qos_update_request(&cc_cdev->cc_qos_req[idx],
+				cc_cdev->map_freq[old_state].frequency[idx]);
+out_unlock:
+	mutex_unlock(&cc_cdev->state_lock);
+	return ret;
 }
 
 static int cc_get_cur_state(struct thermal_cooling_device *cdev,
@@ -71,7 +83,9 @@ static int cc_get_cur_state(struct thermal_cooling_device *cdev,
 {
 	struct cc_limits_data *cc_cdev = cdev->devdata;
 
+	mutex_lock(&cc_cdev->state_lock);
 	*state = cc_cdev->thermal_state;
+	mutex_unlock(&cc_cdev->state_lock);
 
 	return 0;
 }
@@ -208,6 +222,7 @@ static struct cc_limits_data *opp_init(int *cpus)
 	cc_cdev = kzalloc(sizeof(*cc_cdev), GFP_KERNEL);
 	if (!cc_cdev)
 		goto opp_err_exit;
+	mutex_init(&cc_cdev->state_lock);
 	cpu_freq_table[0] = cpu1_freq_table;
 	cpu_freq_table[1] = cpu2_freq_table;
 	ret = build_unified_table(cc_cdev, cpu_freq_table, table_ct, cpus,
