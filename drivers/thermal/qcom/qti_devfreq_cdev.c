@@ -33,8 +33,6 @@ struct devfreq_cdev_device {
 	struct thermal_cooling_device *cdev;
 };
 
-static struct devfreq_cdev_device *devfreq_cdev;
-
 static int devfreq_cdev_set_state(struct thermal_cooling_device *cdev,
 					unsigned long state)
 {
@@ -50,7 +48,7 @@ static int devfreq_cdev_set_state(struct thermal_cooling_device *cdev,
 	pr_debug("cdev:%s Limit:%lu\n", cdev->type, freq);
 	ret = dev_pm_qos_update_request(&cdev_data->qos_max_freq_req, freq);
 	if (ret < 0) {
-		pr_err("Error placing qos request:%u. cdev:%s err:%d\n",
+		pr_err("Error placing qos request:%lu. cdev:%s err:%d\n",
 				freq, cdev->type, ret);
 		return ret;
 	}
@@ -85,98 +83,118 @@ static struct thermal_cooling_device_ops devfreq_cdev_ops = {
 
 static void devfreq_cdev_work(struct work_struct *work)
 {
-	struct devfreq *df = NULL;
-	unsigned long freq = ULONG_MAX;
-	unsigned long *freq_table;
-	struct dev_pm_opp *opp;
-	int ret = 0, freq_ct, i;
 	struct devfreq_cdev_device *cdev_data = container_of(work,
 						struct devfreq_cdev_device,
 						register_work.work);
+	struct devfreq *df;
+	struct dev_pm_opp *opp;
+	unsigned long freq = ULONG_MAX;
+	unsigned long *freq_table;
+	int ret, freq_ct, i;
 
 	df = devfreq_get_devfreq_by_node(cdev_data->np);
 	if (IS_ERR(df)) {
 		ret = PTR_ERR(df);
-		pr_err("Devfreq not available:%d\n", ret);
-		if (--cdev_data->retry_cnt)
-			queue_delayed_work(system_highpri_wq,
-					&cdev_data->register_work,
-					RETRY_DELAY);
-		return;
+		pr_debug("Devfreq not available: %d\n", ret);
+		goto retry;
 	}
 
 	cdev_data->dev = df->dev.parent;
 	cdev_data->devfreq = df;
 	freq_ct = dev_pm_opp_get_opp_count(cdev_data->dev);
+	if (freq_ct <= 0) {
+		ret = freq_ct < 0 ? freq_ct : -EPROBE_DEFER;
+		pr_debug("Devfreq OPP table not ready: %d\n", ret);
+		goto retry;
+	}
+
 	freq_table = kcalloc(freq_ct, sizeof(*freq_table), GFP_KERNEL);
 	if (!freq_table) {
-		ret = -ENOMEM;
+		pr_err("Failed to allocate devfreq OPP table\n");
 		return;
 	}
 
 	for (i = 0, freq = ULONG_MAX; i < freq_ct; i++, freq--) {
-
 		opp = dev_pm_opp_find_freq_floor(cdev_data->dev, &freq);
 		if (IS_ERR(opp)) {
 			ret = PTR_ERR(opp);
-			goto qos_exit;
+			pr_err("Failed to read GPU OPP %d: %d\n", i, ret);
+			goto free_table;
 		}
 		dev_pm_opp_put(opp);
 
-		freq_table[i] = DIV_ROUND_UP(freq, 1000); //hz to khz
-		pr_debug("%d. freq table:%d\n", i, freq_table[i]);
+		freq_table[i] = DIV_ROUND_UP(freq, 1000); /* Hz to kHz */
+		pr_debug("%d. freq table:%lu\n", i, freq_table[i]);
 	}
-	cdev_data->max_state = freq_ct-1;
+	cdev_data->max_state = freq_ct - 1;
 	cdev_data->freq_table = freq_table;
 	ret = dev_pm_qos_add_request(cdev_data->dev,
 					&cdev_data->qos_max_freq_req,
 					DEV_PM_QOS_MAX_FREQUENCY,
 					PM_QOS_MAX_FREQUENCY_DEFAULT_VALUE);
-	if (ret < 0)
-		goto qos_exit;
+	if (ret < 0) {
+		pr_err("Failed to add GPU frequency QoS: %d\n", ret);
+		goto free_table;
+	}
+
 	cdev_data->cdev = thermal_cooling_device_register(DEVFREQ_CDEV_NAME,
 						cdev_data, &devfreq_cdev_ops);
 	if (IS_ERR(cdev_data->cdev)) {
-		pr_err("Cdev register failed for gpu, ret:%d\n",
-			PTR_ERR(cdev_data->cdev));
+		ret = PTR_ERR(cdev_data->cdev);
+		pr_err("GPU cooling device registration failed: %d\n", ret);
 		cdev_data->cdev = NULL;
-		goto qos_exit;
+		dev_pm_qos_remove_request(&cdev_data->qos_max_freq_req);
+		goto free_table;
 	}
-
 	return;
 
-qos_exit:
-	kfree(cdev_data->freq_table);
-	dev_pm_qos_remove_request(&cdev_data->qos_max_freq_req);
+free_table:
+	kfree(freq_table);
+	cdev_data->freq_table = NULL;
+	return;
+
+retry:
+	if (--cdev_data->retry_cnt > 0)
+		queue_delayed_work(system_highpri_wq, &cdev_data->register_work,
+				RETRY_DELAY);
+	else
+		pr_err("GPU cooling registration unavailable after retries: %d\n",
+			ret);
 }
 
 static int devfreq_cdev_probe(struct platform_device *pdev)
 {
+	struct devfreq_cdev_device *cdev_data;
 	struct device *dev = &pdev->dev;
 
-	devfreq_cdev = devm_kzalloc(dev, sizeof(*devfreq_cdev), GFP_KERNEL);
-	if (!devfreq_cdev)
+	cdev_data = devm_kzalloc(dev, sizeof(*cdev_data), GFP_KERNEL);
+	if (!cdev_data)
 		return -ENOMEM;
 
-	devfreq_cdev->np = of_parse_phandle(pdev->dev.of_node,
-				"qcom,devfreq", 0);
-	devfreq_cdev->retry_cnt = MAX_RETRY_CNT;
+	cdev_data->np = of_parse_phandle(dev->of_node, "qcom,devfreq", 0);
+	if (!cdev_data->np)
+		return -EINVAL;
 
-	INIT_DEFERRABLE_WORK(&devfreq_cdev->register_work, devfreq_cdev_work);
-	queue_delayed_work(system_highpri_wq, &devfreq_cdev->register_work, 0);
+	cdev_data->retry_cnt = MAX_RETRY_CNT;
+	platform_set_drvdata(pdev, cdev_data);
 
+	INIT_DEFERRABLE_WORK(&cdev_data->register_work, devfreq_cdev_work);
+	queue_delayed_work(system_highpri_wq, &cdev_data->register_work, 0);
 	return 0;
 }
 
 static int devfreq_cdev_remove(struct platform_device *pdev)
 {
-	if (devfreq_cdev->cdev) {
-		thermal_cooling_device_unregister(devfreq_cdev->cdev);
-		dev_pm_qos_remove_request(&devfreq_cdev->qos_max_freq_req);
-		kfree(devfreq_cdev->freq_table);
-		devfreq_cdev->cdev = NULL;
-	}
+	struct devfreq_cdev_device *cdev_data = platform_get_drvdata(pdev);
 
+	cancel_delayed_work_sync(&cdev_data->register_work);
+	if (cdev_data->cdev) {
+		thermal_cooling_device_unregister(cdev_data->cdev);
+		dev_pm_qos_remove_request(&cdev_data->qos_max_freq_req);
+		kfree(cdev_data->freq_table);
+		cdev_data->cdev = NULL;
+	}
+	of_node_put(cdev_data->np);
 	return 0;
 }
 
