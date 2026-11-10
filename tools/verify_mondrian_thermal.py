@@ -12,6 +12,8 @@ MAKE = ROOT / "drivers/thermal/qcom/Makefile"
 CONFIG = ROOT / "arch/arm64/configs/vendor/mondrian_GKI.config"
 GPU_SRC = ROOT / "drivers/thermal/qcom/qti_devfreq_cdev.c"
 CPUFREQ_SRC = ROOT / "drivers/thermal/qcom/qti_cpufreq_cdev.c"
+PAUSE_SRC = ROOT / "drivers/thermal/qcom/thermal_pause.c"
+WALT_PAUSE_SRC = ROOT / "kernel/sched/walt/walt_pause.c"
 
 
 def require(condition, detail):
@@ -25,6 +27,8 @@ def main():
     config = CONFIG.read_text(encoding="utf-8")
     gpu = GPU_SRC.read_text(encoding="utf-8")
     cpufreq = CPUFREQ_SRC.read_text(encoding="utf-8")
+    pause = PAUSE_SRC.read_text(encoding="utf-8")
+    walt = WALT_PAUSE_SRC.read_text(encoding="utf-8")
 
     require("CONFIG_QTI_CPUFREQ_CDEV=m" in config,
             "OEM CPUFreq cooling module must remain selected")
@@ -92,6 +96,38 @@ def main():
             cpu_remove.index("cancel_work_sync("),
             "policy/hotplug event producers must stop before freeing worker state")
 
+    require("CONFIG_QTI_CPU_PAUSE_COOLING_DEVICE=m" in config and
+            "obj-$(CONFIG_QTI_CPU_PAUSE_COOLING_DEVICE) += thermal_pause.o" in make,
+            "Qualcomm thermal pause must still be built for mondrian")
+    pause_register = pause.split("static void thermal_pause_register_cdev(", 1)[1].split(
+        "static int thermal_pause_remove(struct platform_device *pdev);", 1)[0]
+    pause_probe = pause.split("static int thermal_pause_probe(", 1)[1].split(
+        "static int thermal_pause_remove(struct platform_device *pdev)\n{", 1)[0]
+    pause_remove = pause.split("static int thermal_pause_remove(struct platform_device *pdev)\n{", 1)[1].split(
+        "static const struct of_device_id thermal_pause_match", 1)[0]
+    pause_resume = pause.split("static int thermal_resume_work(", 1)[1].split(
+        "static void thermal_pause_update_work(", 1)[0]
+    require("if (READ_ONCE(thermal_pause_cdev->cdev))" in pause_register,
+            "Repeated CPU-online callbacks must not double-register a cooling device")
+    require("if (thermal_pause_owner)" in pause_probe and
+            "thermal_pause_remove(pdev);" in pause_probe and
+            "INIT_LIST_HEAD(&thermal_pause_cdev_list);" not in pause_probe,
+            "Thermal pause probes must use one owner and undo partial initialization")
+    require(pause_remove.index("cpuhp_remove_state_nocalls(") <
+            pause_remove.index("cancel_work_sync(") <
+            pause_remove.index("thermal_cooling_device_unregister(") <
+            pause_remove.index("cancel_delayed_work_sync(") <
+            pause_remove.index("thermal_resume_work(thermal_pause_cdev);") <
+            pause_remove.index("list_del("),
+            "Thermal pause removal must stop all work and release WALT votes before detaching")
+    require(pause_remove.index("mutex_unlock(&cpus_pause_lock);") <
+            pause_remove.index("cancel_delayed_work_sync("),
+            "Do not synchronously cancel work while holding the worker's mutex")
+    require("walt_resume_cpus(" in pause_resume and
+            "cpumask_copy(&cpus_in_max_cooling_level" in pause_resume and
+            "update_ref_counts(&requested_cpus, false);" in walt,
+            "Thermal teardown must use the actual refcounted OEM WALT resume path")
+
     require("CONFIG_QTI_DEVFREQ_CDEV=m" in config,
             "OEM GPU devfreq cooling module is not selected")
     require("obj-$(CONFIG_QTI_DEVFREQ_CDEV) += qti_devfreq_cdev.o" in make,
@@ -153,7 +189,7 @@ def main():
             "thermal state mutex was not initialized")
     require("ret = -ENOMEM;" in opp and "return ERR_PTR(ret);" in opp,
             "OPP failures must preserve their actual error codes")
-    print("[PASS] mondrian OEM CPU voltage, CPUFreq hotplug and GPU devfreq safety checks")
+    print("[PASS] mondrian OEM CPU voltage, CPUFreq hotplug, WALT thermal pause and GPU devfreq safety checks")
     print("[PENDING] LLVM build and runtime thermal transitions on SM8475")
 
 
