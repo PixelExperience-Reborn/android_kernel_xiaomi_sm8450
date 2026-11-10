@@ -186,14 +186,16 @@ unlock:
 		       cpumask_pr_args(&re_pause_cpus));
 }
 
-/* do not perform online work in hotplug context */
+/*
+ * The refcounts are protected by pause_lock. A CPUHP callback cannot sample
+ * them without that lock, and taking it here can invert the hotplug locking
+ * order against pause_cpus()/resume_cpus(). Queue the existing replay worker
+ * unconditionally; it checks both online CPUs and refs under pause_lock.
+ * A superfluous online notification with no outstanding pause is a no-op.
+ */
 static int walt_pause_hp_online(unsigned int online_cpu)
 {
-	struct pause_cpu_state *pause_cpu_state;
-
-	pause_cpu_state = per_cpu_ptr(&pause_state, online_cpu);
-	if (pause_cpu_state->ref_count)
-		schedule_work(&walt_pause_online_work);
+	schedule_work(&walt_pause_online_work);
 	return 0;
 }
 
