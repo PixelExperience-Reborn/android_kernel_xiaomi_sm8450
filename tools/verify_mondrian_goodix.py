@@ -57,6 +57,13 @@ def main():
             "system PM fallback is required until the mondrian panel DT link is verified")
     require("cancel_work_sync(&core_data->self_check_work);" in core,
             "Goodix teardown must finish firmware self-check work before deallocation")
+    teardown = core.split("static int goodix_ts_remove(", 1)[1]
+    require(teardown.index("panel_event_notifier_unregister(") <
+            teardown.index("goodix_fw_update_uninit(core_data);"),
+            "panel notifier must unregister before firmware state is torn down")
+    require(teardown.index("cancel_work_sync(&core_data->self_check_work);") <
+            teardown.index("goodix_fw_update_uninit(core_data);"),
+            "firmware self-check must stop before its update state is freed")
     driver_make = (DRIVER / "Makefile").read_text()
     require("goodix_brl_spi.o" in driver_make and "goodix_brl_i2c.o" not in driver_make,
             "mondrian Goodix must build SPI without I2C")
