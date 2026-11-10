@@ -131,6 +131,19 @@ def main():
             "cpumask_copy(&cpus_in_max_cooling_level" in pause_resume and
             "update_ref_counts(&requested_cpus, false);" in walt,
             "Thermal teardown must use the actual refcounted OEM WALT resume path")
+    walt_resume = walt.split("int walt_resume_cpus(", 1)[1].split(
+        "EXPORT_SYMBOL(walt_resume_cpus);", 1)[0]
+    require(walt_resume.index("mutex_lock(&pause_lock);") <
+            walt_resume.index("cpumask_copy(&requested_cpus, cpus);") <
+            walt_resume.index("for_each_cpu(cpu, &requested_cpus)") <
+            walt_resume.index("if (state->ref_count <= 0)") <
+            walt_resume.index("ret = -EINVAL;") <
+            walt_resume.index("update_ref_counts(&requested_cpus, false);") <
+            walt_resume.index("update_pause_resume_cpus(cpus);"),
+            "WALT must reject unmatched CPU resumes before any refcount or mask changes")
+    require("pr_warn_ratelimited(" in walt_resume and
+            "goto unlock;" in walt_resume,
+            "Invalid WALT resume must be reported and leave without decrementing refs")
     require("static DEFINE_MUTEX(thermal_pause_transition_lock);" in pause,
             "Thermal WALT transitions need a separate serialisation lock")
     require(pause_update.index("mutex_lock(&thermal_pause_transition_lock);") <
