@@ -107,6 +107,10 @@ def main():
         "static const struct of_device_id thermal_pause_match", 1)[0]
     pause_resume = pause.split("static int thermal_resume_work(", 1)[1].split(
         "static void thermal_pause_update_work(", 1)[0]
+    pause_update = pause.split("static void thermal_pause_update_work(", 1)[1].split(
+        "static int thermal_pause_set_cur_state(", 1)[0]
+    pause_get = pause.split("static int thermal_pause_get_cur_state(", 1)[1].split(
+        "static int thermal_pause_get_max_state(", 1)[0]
     require("if (READ_ONCE(thermal_pause_cdev->cdev))" in pause_register,
             "Repeated CPU-online callbacks must not double-register a cooling device")
     require("if (thermal_pause_owner)" in pause_probe and
@@ -127,6 +131,21 @@ def main():
             "cpumask_copy(&cpus_in_max_cooling_level" in pause_resume and
             "update_ref_counts(&requested_cpus, false);" in walt,
             "Thermal teardown must use the actual refcounted OEM WALT resume path")
+    require("static DEFINE_MUTEX(thermal_pause_transition_lock);" in pause,
+            "Thermal WALT transitions need a separate serialisation lock")
+    require(pause_update.index("mutex_lock(&thermal_pause_transition_lock);") <
+            pause_update.index("mutex_lock(&cpus_pause_lock);") <
+            pause_update.index("thermal_resume_work(thermal_pause_cdev);") <
+            pause_update.index("mutex_unlock(&cpus_pause_lock);\\n\\tmutex_unlock(&thermal_pause_transition_lock);"),
+            "Cooling workers must serialise across the unlocked WALT call")
+    require(pause_remove.index("cancel_delayed_work_sync(") <
+            pause_remove.index("mutex_lock(&thermal_pause_transition_lock);") <
+            pause_remove.index("mutex_lock(&cpus_pause_lock);", pause_remove.index("mutex_lock(&thermal_pause_transition_lock);")) <
+            pause_remove.index("thermal_resume_work(thermal_pause_cdev);") <
+            pause_remove.index("mutex_unlock(&thermal_pause_transition_lock);"),
+            "Teardown must drain work before taking the transition lock for WALT release")
+    require("*level = READ_ONCE(thermal_pause_cdev->thermal_pause_level);" in pause_get,
+            "Thermal current-state getter must not race plain unlocked reads with WALT work")
 
     require("CONFIG_QTI_DEVFREQ_CDEV=m" in config,
             "OEM GPU devfreq cooling module is not selected")
