@@ -66,13 +66,19 @@ static int cc_set_cur_state(struct thermal_cooling_device *cdev,
 			goto rollback;
 	}
 	cc_cdev->thermal_state = state;
+	ret = 0;
 	goto out_unlock;
 
 rollback:
 	/* Do not publish a new thermal state if one of its QoS votes failed. */
-	while (--idx >= 0)
-		freq_qos_update_request(&cc_cdev->cc_qos_req[idx],
+	while (--idx >= 0) {
+		int err = freq_qos_update_request(&cc_cdev->cc_qos_req[idx],
 				cc_cdev->map_freq[old_state].frequency[idx]);
+
+		if (err < 0)
+			pr_err("Failed to restore CPU%d frequency limit: %d\n",
+				cc_cdev->cpu_map[idx], err);
+	}
 out_unlock:
 	mutex_unlock(&cc_cdev->state_lock);
 	return ret;
