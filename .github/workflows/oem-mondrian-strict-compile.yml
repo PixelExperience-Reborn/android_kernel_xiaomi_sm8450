@@ -71,6 +71,7 @@ jobs:
           make O="$RUNNER_TEMP/mondrian-out" olddefconfig
           python3 tools/verify_mondrian_oem_eroFS.py \
             --generated-config "$RUNNER_TEMP/mondrian-out/.config"
+          python3 tools/verify_mondrian_thermal.py
       - name: Strict ARM64 kernel compilation with LLVM23
         run: |
           set -euo pipefail
