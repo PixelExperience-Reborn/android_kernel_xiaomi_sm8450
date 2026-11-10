@@ -240,6 +240,7 @@ static int cpufreq_cdev_probe(struct platform_device *pdev)
 	struct cpufreq_cdev_device *cdev_data, *item;
 	struct device *cpu_dev;
 	int cpu, count, idx, ret;
+	bool duplicate;
 
 	count = of_count_phandle_with_args(np, "qcom,cpus", NULL);
 	if (count <= 0)
@@ -273,11 +274,14 @@ static int cpufreq_cdev_probe(struct platform_device *pdev)
 		}
 
 		mutex_lock(&qti_cpufreq_cdev_lock);
+		duplicate = false;
 		list_for_each_entry(item, &qti_cpufreq_cdev_list, node) {
-			if (item->cpu == cpu)
+			if (item->cpu == cpu) {
+				duplicate = true;
 				break;
+			}
 		}
-		if (&item->node != &qti_cpufreq_cdev_list) {
+		if (duplicate) {
 			mutex_unlock(&qti_cpufreq_cdev_lock);
 			continue;
 		}
