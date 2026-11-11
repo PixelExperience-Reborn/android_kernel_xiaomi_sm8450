@@ -1,0 +1,107 @@
+name: OEM mondrian strict kernel compile with official Android Clang 23
+
+on:
+  push:
+    branches:
+      - bringup/a17-mondrian-xiaomi-oem-base-20261109
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mondrian-oem-strict-compile
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install host build and ARM64 cross-binutils
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            bc bison flex make libssl-dev libelf-dev dwarves \
+            binutils-aarch64-linux-gnu
+      - name: Restore exact Google Android Clang 23 toolchain cache
+        id: clang-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/google-clang
+          key: android-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119-linux-x86
+      - name: Obtain pinned Google Android Clang r614150
+        if: steps.clang-cache.outputs.cache-hit != 'true'
+        run: |
+          bash -n tools/fetch_android_kernel_clang.sh
+          bash tools/fetch_android_kernel_clang.sh "$RUNNER_TEMP/google-clang"
+      - name: Save verified compiler for subsequent source fixes
+        if: steps.clang-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/google-clang
+          key: android-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119-linux-x86
+      - name: Set compiler path and verify source, target and exact SHA
+        run: |
+          set -euo pipefail
+          echo "$RUNNER_TEMP/google-clang/clang-r614150/bin" >> "$GITHUB_PATH"
+          actual="$RUNNER_TEMP/google-clang/clang-r614150/bin/clang"
+          test -x "$actual"
+          "$actual" --version | sed -n '1p' | grep -F 'clang version 23.'
+          test "$(git -C "$RUNNER_TEMP/google-clang" rev-parse HEAD)" = \
+            c9ed23e2ba198658b630d4b10e09fa980cd43119
+          command -v aarch64-linux-gnu-elfedit
+          echo '' | "$actual" --target=aarch64-linux-gnu -dM -E -x c - | \
+            grep -F '#define __aarch64__ 1'
+          grep -Fx 'SUBLEVEL = 81' Makefile
+          test -f drivers/misc/hwid/hwid.c
+      - name: Generate verified OEM mondrian kernel configuration
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          mkdir -p "$RUNNER_TEMP/mondrian-out"
+          make O="$RUNNER_TEMP/mondrian-out" gki_defconfig
+          bash scripts/kconfig/merge_config.sh -m -r \
+            -O "$RUNNER_TEMP/mondrian-out" \
+            "$RUNNER_TEMP/mondrian-out/.config" \
+            arch/arm64/configs/vendor/mondrian_GKI.config
+          make O="$RUNNER_TEMP/mondrian-out" olddefconfig
+          python3 tools/verify_mondrian_oem_eroFS.py \
+            --generated-config "$RUNNER_TEMP/mondrian-out/.config"
+          python3 tools/verify_mondrian_thermal.py
+      - name: Strict ARM64 kernel compilation with LLVM23
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          make O="$RUNNER_TEMP/mondrian-out" -j3 vmlinux \
+            2>&1 | tee "$RUNNER_TEMP/mondrian-kernel-compile.log"
+          test -s "$RUNNER_TEMP/mondrian-out/vmlinux"
+          echo '[PASS] Strict ARM64 kernel ELF compilation' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] Qualcomm external modules, DTBO, KMI, AOSP17 images and device boot' >> "$GITHUB_STEP_SUMMARY"
+      - name: Build ARM64 Image and all selected in-tree kernel modules
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          make O="$RUNNER_TEMP/mondrian-out" -k -j3 Image modules \
+            2>&1 | tee -a "$RUNNER_TEMP/mondrian-kernel-compile.log"
+          test -s "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image"
+          test -s "$RUNNER_TEMP/mondrian-out/Module.symvers"
+          ko_count=$(find "$RUNNER_TEMP/mondrian-out" -type f -name '*.ko' | wc -l)
+          test "$ko_count" -gt 0
+          echo "[PASS] ARM64 Image, in-tree modules ($ko_count) and Module.symvers" >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] Qualcomm external modules, device DT/DTBO, KMI, Android17 boot and device tests' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve diagnostic config and compiler messages only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oem-mondrian-strict-compile-evidence
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/mondrian-out/.config
+            ${{ runner.temp }}/mondrian-kernel-compile.log
+            ${{ runner.temp }}/mondrian-out/Module.symvers

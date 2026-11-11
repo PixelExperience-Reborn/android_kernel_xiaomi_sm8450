@@ -1,0 +1,87 @@
+name: Mondrian Goodix GT9916S manufacturer driver source and LLVM23 compile
+
+on:
+  push:
+    branches:
+      - bringup/a17-mondrian-xiaomi-oem-base-20261109
+    paths:
+      - 'drivers/input/touchscreen/**'
+      - 'arch/arm64/configs/vendor/mondrian_GKI.config'
+      - 'tools/verify_mondrian_goodix.py'
+      - '.github/workflows/mondrian-goodix-compile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mondrian-goodix-source-compile
+  cancel-in-progress: true
+
+jobs:
+  goodix-compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check full manufacturer source and device binding
+        run: python3 tools/verify_mondrian_goodix.py
+      - name: Install host Kconfig and arm64 cross dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            make bc bison flex libssl-dev libelf-dev \
+            binutils-aarch64-linux-gnu
+      - name: Restore official Android Clang 23 cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/google-clang
+          key: android-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119-linux-x86
+      - name: Obtain pinned official Google Clang when cache is absent
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash tools/fetch_android_kernel_clang.sh "$RUNNER_TEMP/google-clang"
+      - name: Verify toolchain identity and make host-independent
+        run: |
+          set -euo pipefail
+          echo "$RUNNER_TEMP/google-clang/clang-r614150/bin" >> "$GITHUB_PATH"
+          test "$(git -C "$RUNNER_TEMP/google-clang" rev-parse HEAD)" = \
+            c9ed23e2ba198658b630d4b10e09fa980cd43119
+          "$RUNNER_TEMP/google-clang/clang-r614150/bin/clang" --version | sed -n '1p' | grep -F 'clang version 23.'
+      - name: Run OEM Kconfig and enforce compiled GT9916S module selection
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          mkdir -p "$RUNNER_TEMP/goodix-out"
+          make O="$RUNNER_TEMP/goodix-out" gki_defconfig
+          bash scripts/kconfig/merge_config.sh -m -r \
+            -O "$RUNNER_TEMP/goodix-out" \
+            "$RUNNER_TEMP/goodix-out/.config" \
+            arch/arm64/configs/vendor/mondrian_GKI.config
+          make O="$RUNNER_TEMP/goodix-out" olddefconfig
+          grep -Fx 'CONFIG_TOUCHSCREEN_GOODIX_BRL=m' "$RUNNER_TEMP/goodix-out/.config"
+          grep -Fx 'CONFIG_QCOM_PANEL_EVENT_NOTIFIER=m' "$RUNNER_TEMP/goodix-out/.config"
+          grep -Fx 'CONFIG_DRM_PANEL=y' "$RUNNER_TEMP/goodix-out/.config"
+          python3 tools/verify_mondrian_oem_eroFS.py \
+            --generated-config "$RUNNER_TEMP/goodix-out/.config"
+      - name: Compile complete Goodix SPI module objects against Xiaomi OEM kernel
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          make O="$RUNNER_TEMP/goodix-out" -j3 \
+            drivers/input/touchscreen/goodix_berlin_driver/goodix_core.o \
+            2>&1 | tee "$RUNNER_TEMP/goodix-compile.log"
+          test -s "$RUNNER_TEMP/goodix-out/drivers/input/touchscreen/goodix_berlin_driver/goodix_core.o"
+          echo '[PASS] Goodix Berlin GT9916S SPI driver object compiled with Android Clang 23' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] module linking, Module.symvers, vendor firmware, touch/ESD/FOD runtime' >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep diagnostics rather than publishing unverified firmware
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mondrian-goodix-compile-evidence
+          path: |
+            ${{ runner.temp }}/goodix-out/.config
+            ${{ runner.temp }}/goodix-compile.log
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
