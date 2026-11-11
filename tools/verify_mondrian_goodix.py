@@ -63,6 +63,27 @@ def main():
             "Goodix is not selected as mondrian module")
     require("CONFIG_QCOM_PANEL_EVENT_NOTIFIER=m" in fragment,
             "mondrian must select the Qualcomm display panel event notifier module")
+    parse_dt = core.split("static int goodix_parse_dt(struct device *dev,", 1)[1].split(
+        "static void goodix_ts_report_pen(", 1)[0]
+    probe_dt = core.split("static int goodix_ts_probe(struct platform_device *pdev)", 1)[1].split(
+        "static int goodix_ts_remove(", 1)[0]
+    for supply in ("avdd", "iovdd"):
+        gpio = f'r = of_get_named_gpio(node, "goodix,{supply}-gpio", 0);'
+        require(gpio in parse_dt and
+                parse_dt.index(gpio) < parse_dt.index("if (r == -EPROBE_DEFER)",
+                                                      parse_dt.index(gpio)) <
+                parse_dt.index("if (r < 0)", parse_dt.index(gpio)),
+                f"Goodix optional {supply} GPIO must defer before regulator fallback")
+    for required_gpio in ("reset", "irq"):
+        query = f'r = of_get_named_gpio(node, "goodix,{required_gpio}-gpio", 0);'
+        section = parse_dt.split(query, 1)[1].split("ts_info(dev,", 1)[0]
+        require("if (r != -EPROBE_DEFER)" in section and
+                "return r;" in section and "return -EINVAL;" not in section,
+                f"Goodix required {required_gpio} GPIO errors must propagate")
+    require('if (ret != -EPROBE_DEFER)' in probe_dt and
+            'return ret;' in probe_dt.split('if (IS_ENABLED(CONFIG_OF)', 1)[1].split(
+                '} else {', 1)[0],
+            "Goodix probe must preserve GPIO-provider -EPROBE_DEFER")
     require("IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)" in core
             and "IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)" in header,
             "Goodix does not use the Qualcomm panel notifier when linkable")

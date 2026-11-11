@@ -929,6 +929,8 @@ static int goodix_parse_dt(struct device *dev,
 	}
 
 	r = of_get_named_gpio(node, "goodix,avdd-gpio", 0);
+	if (r == -EPROBE_DEFER)
+		return r;
 	if (r < 0) {
 		ts_info(dev, "can't find avdd-gpio, use other power supply");
 		board_data->avdd_gpio = 0;
@@ -938,6 +940,8 @@ static int goodix_parse_dt(struct device *dev,
 	}
 
 	r = of_get_named_gpio(node, "goodix,iovdd-gpio", 0);
+	if (r == -EPROBE_DEFER)
+		return r;
 	if (r < 0) {
 		ts_info(dev, "can't find iovdd-gpio, use other power supply");
 		board_data->iovdd_gpio = 0;
@@ -948,16 +952,18 @@ static int goodix_parse_dt(struct device *dev,
 
 	r = of_get_named_gpio(node, "goodix,reset-gpio", 0);
 	if (r < 0) {
-		ts_err(dev, "invalid reset-gpio in dt: %d", r);
-		return -EINVAL;
+		if (r != -EPROBE_DEFER)
+			ts_err(dev, "invalid reset-gpio in dt: %d", r);
+		return r;
 	}
 	ts_info(dev, "get reset-gpio[%d] from dt", r);
 	board_data->reset_gpio = r;
 
 	r = of_get_named_gpio(node, "goodix,irq-gpio", 0);
 	if (r < 0) {
-		ts_err(dev, "invalid irq-gpio in dt: %d", r);
-		return -EINVAL;
+		if (r != -EPROBE_DEFER)
+			ts_err(dev, "invalid irq-gpio in dt: %d", r);
+		return r;
 	}
 	ts_info(dev, "get irq-gpio[%d] from dt", r);
 	board_data->irq_gpio = r;
@@ -2168,8 +2174,10 @@ static int goodix_ts_probe(struct platform_device *pdev)
 		/* parse devicetree property */
 		ret = goodix_parse_dt(bus_interface->dev, board_data);
 		if (ret) {
-			ts_err(bus_interface->dev, "failed parse device info form dts, %d", ret);
-			return -EINVAL;
+			if (ret != -EPROBE_DEFER)
+				ts_err(bus_interface->dev,
+				       "failed to parse device tree: %d", ret);
+			return ret;
 		}
 	} else {
 		ts_err(bus_interface->dev, "no valid device tree node found");
