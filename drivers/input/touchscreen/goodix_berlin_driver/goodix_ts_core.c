@@ -1491,10 +1491,14 @@ static int goodix_ts_input_dev_config(struct goodix_ts_core *core_data)
 			     ts_bdata->panel_max_w - 1, 0, 0);
 #ifdef INPUT_TYPE_B_PROTOCOL
 #if LINUX_VERSION_CODE > KERNEL_VERSION(3, 7, 0)
-	input_mt_init_slots(input_dev, GOODIX_MAX_TOUCH, INPUT_MT_DIRECT);
+	r = input_mt_init_slots(input_dev, GOODIX_MAX_TOUCH, INPUT_MT_DIRECT);
 #else
-	input_mt_init_slots(input_dev, GOODIX_MAX_TOUCH);
+	r = input_mt_init_slots(input_dev, GOODIX_MAX_TOUCH);
 #endif
+	if (r) {
+		ts_err(dev, "Failed to initialize multitouch slots: %d", r);
+		goto err_free_input;
+	}
 #else
 	/* for single touch */
 	input_set_abs_params(input_dev, ABS_X, 0, ts_bdata->panel_max_x - 1, 0, 0);
@@ -1507,12 +1511,17 @@ static int goodix_ts_input_dev_config(struct goodix_ts_core *core_data)
 
 	r = input_register_device(input_dev);
 	if (r < 0) {
-		ts_err(dev, "Unable to register input device");
-		input_free_device(input_dev);
-		return r;
+		ts_err(dev, "Unable to register input device: %d", r);
+		goto err_free_input;
 	}
 
 	return 0;
+
+err_free_input:
+	/* Never leave a freed input device reachable from core_data. */
+	core_data->input_dev = NULL;
+	input_free_device(input_dev);
+	return r;
 }
 
 static int goodix_ts_pen_dev_config(struct goodix_ts_core *core_data)
@@ -1567,7 +1576,8 @@ static int goodix_ts_pen_dev_config(struct goodix_ts_core *core_data)
 
 	r = input_register_device(pen_dev);
 	if (r < 0) {
-		ts_err(dev, "Unable to register pen device");
+		ts_err(dev, "Unable to register pen device: %d", r);
+		core_data->pen_dev = NULL;
 		input_free_device(pen_dev);
 		return r;
 	}

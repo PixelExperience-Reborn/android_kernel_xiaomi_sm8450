@@ -98,6 +98,24 @@ def main():
             "system PM fallback is required until the mondrian panel DT link is verified")
     require("cancel_work_sync(&core_data->self_check_work);" in core,
             "Goodix teardown must finish firmware self-check work before deallocation")
+    finger = core.split("static int goodix_ts_input_dev_config(", 1)[1].split(
+        "static int goodix_ts_pen_dev_config(", 1)[0]
+    pen = core.split("static int goodix_ts_pen_dev_config(", 1)[1].split(
+        "void goodix_ts_input_dev_remove(", 1)[0]
+    require("r = input_mt_init_slots(input_dev, GOODIX_MAX_TOUCH, INPUT_MT_DIRECT);" in finger and
+            finger.index("if (r) {") <
+            finger.index("goto err_free_input;") <
+            finger.index("r = input_register_device(input_dev);"),
+            "Goodix MT slot allocation failure must abort input registration")
+    require(finger.index("err_free_input:") <
+            finger.index("core_data->input_dev = NULL;") <
+            finger.index("input_free_device(input_dev);") <
+            finger.index("return r;"),
+            "Failed Goodix touch input registration must release and clear state")
+    require(pen.index("if (r < 0)") <
+            pen.index("core_data->pen_dev = NULL;") <
+            pen.index("input_free_device(pen_dev);"),
+            "Failed Goodix pen registration must not leave a dangling pointer")
     start = core.split("static int goodix_start_later_init(", 1)[1].split(
         "static int goodix_ts_probe(", 1)[0]
     probe = core.split("static int goodix_ts_probe(", 1)[1].split(
