@@ -17,6 +17,7 @@ void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum 
 {
 	struct hfi_csc hfi_cfg;
 	int ret = 0;
+	int i;
 	u32 prop_id = HFI_PROPERTY_LAYER_COLOR_CSC;
 
 	if (!ctx || !data) {
@@ -26,15 +27,15 @@ void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum 
 
 	prop_id = HFI_PACK_VERSION(1, 0, prop_id);
 	hfi_cfg.flags = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
-	for (int i = 0; i < HFI_CSC_MATRIX_COEFF_SIZE; i++)
+	for (i = 0; i < HFI_CSC_MATRIX_COEFF_SIZE; i++)
 		hfi_cfg.ctm_coeff[i] = data->csc_mv[i];
 
-	for (int i = 0; i < HFI_CSC_BIAS_SIZE; i++) {
+	for (i = 0; i < HFI_CSC_BIAS_SIZE; i++) {
 		hfi_cfg.pre_bias[i] = data->csc_pre_bv[i];
 		hfi_cfg.post_bias[i] = data->csc_post_bv[i];
 	}
 
-	for (int i = 0; i < HFI_CSC_CLAMP_SIZE; i++) {
+	for (i = 0; i < HFI_CSC_CLAMP_SIZE; i++) {
 		hfi_cfg.pre_clamp[i] = data->csc_pre_lv[i];
 		hfi_cfg.post_clamp[i] = data->csc_post_lv[i];
 	}
@@ -156,6 +157,7 @@ void hfi_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
 	struct hfi_ucsc_csc hfi_cfg;
 	drm_msm_ucsc_csc *ucsc_csc;
 	int ret = 0;
+	int i;
 
 	if (!ctx || !data || index == SDE_SSPP_RECT_MAX) {
 		SDE_ERROR("invalid parameter ctx: %pK data: %pK index: %d\n",
@@ -177,13 +179,13 @@ void hfi_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
 	}
 
 	hfi_cfg.flags = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
-	for (int i = 0; i < HFI_UCSC_CSC_MATRIX_COEFF_SIZE; i++)
+	for (i = 0; i < HFI_UCSC_CSC_MATRIX_COEFF_SIZE; i++)
 		hfi_cfg.ctm_coeff[i] = ucsc_csc->cfg_param_0[i];
 
-	for (int i = 0; i < HFI_UCSC_CSC_PRE_CLAMP_SIZE; i++)
+	for (i = 0; i < HFI_UCSC_CSC_PRE_CLAMP_SIZE; i++)
 		hfi_cfg.pre_clamp[i] = ucsc_csc->cfg_param_1[i];
 
-	for (int i = 0; i < HFI_UCSC_CSC_POST_CLAMP_SIZE; i++)
+	for (i = 0; i < HFI_UCSC_CSC_POST_CLAMP_SIZE; i++)
 		hfi_cfg.post_clamp[i] = ucsc_csc->cfg_param_1[HFI_UCSC_CSC_PRE_CLAMP_SIZE + i];
 
 send_payload:
