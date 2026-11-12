@@ -102,8 +102,9 @@ static inline bool sde_format_lookup(u32 hfi_fmt,
 	struct sde_format_extended *sde_fmt)
 {
 	bool found = false;
+	int i;
 
-	for (int i = 0; i < fmt_map_size; i++) {
+	for (i = 0; i < fmt_map_size; i++) {
 		if (sde_fmt_map[i].hfi_format == hfi_fmt) {
 			sde_fmt->fourcc_format = sde_fmt_map[i].drm_format;
 			sde_fmt->modifier = sde_fmt_map[i].modifier;
@@ -137,7 +138,8 @@ end:
 static inline u32 hfi_format_lookup(struct sde_format_extended *sde_fmt,
 		const struct hfi_format_map *sde_fmt_map, u32 fmt_map_size)
 {
-	for (int i = 0; i < fmt_map_size; i++) {
+	int i;
+	for (i = 0; i < fmt_map_size; i++) {
 		if (sde_fmt_map[i].drm_format == sde_fmt->fourcc_format &&
 				sde_fmt_map[i].modifier == sde_fmt->modifier) {
 			return sde_fmt_map[i].hfi_format;
