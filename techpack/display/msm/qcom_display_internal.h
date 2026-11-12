@@ -15,6 +15,7 @@
 #include <linux/soc/qcom/panel_event_notifier.h>
 #include <linux/soc/qcom/altmode-glink.h>
 #include <linux/ipc_logging.h>
+#include <soc/qcom/of_common.h>
 #include <linux/errno.h>
 #include <linux/of.h>
 
@@ -158,27 +159,5 @@ static int llcc_notif_staling_inc_counter(struct llcc_slice_desc *desc)
 
 /* Logging uses the real OEM <linux/ipc_logging.h> implementation. */
 
-/**
- * * of_fdt_get_ddrtype - Return the type of ddr (4/5) on the current device
- * *
- * * On match, returns a non-zero positive value which matches the ddr type.
- * * Otherwise returns -ENOENT.
- **/
-static inline int of_fdt_get_ddrtype(void)
-{
-	int ret;
-	u32 ddr_type;
-	struct device_node *mem_node;
-
-	mem_node = of_find_node_by_path("/memory");
-	if (!mem_node)
-		return -ENOENT;
-
-	ret = of_property_read_u32(mem_node, "ddr_device_type", &ddr_type);
-	of_node_put(mem_node);
-	if (ret < 0)
-		return -ENOENT;
-
-	return ddr_type;
-}
+/* DDR type parsing is provided by native OEM <soc/qcom/of_common.h>. */
 #endif
