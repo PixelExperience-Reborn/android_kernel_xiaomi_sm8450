@@ -1730,8 +1730,6 @@ struct dsi_bridge *dsi_drm_bridge_init(struct dsi_display *display,
 	bridge->base.funcs = &dsi_bridge_ops;
 	bridge->base.encoder = encoder;
 
-	kref_init(&bridge->base.refcount);
-
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 	if (rc) {
