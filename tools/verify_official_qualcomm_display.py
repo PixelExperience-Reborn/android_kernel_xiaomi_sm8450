@@ -16,7 +16,7 @@ EXPECTED_BLOBS = {
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
     "msm/Kbuild": "26744bed61323b4bd7267b11da6577867ff58c65",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
-    "msm/qcom_display_internal.h": "e514dc98a5d2479275d2ce17591e54a4f31deb82",
+    "msm/qcom_display_internal.h": "574d1c903e6c04edfc247f76dd829c25f92c5e66",
     "msm/sde_hdcp_2x.c": "9a497ce0370a33a02822cff6ec06e33cc209c9ca",
     "msm/dp/dp_panel.h": "64d287309a78ac09d8e2eeccfcc484448c40f187",
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
