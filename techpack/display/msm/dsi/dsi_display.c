@@ -7047,7 +7047,7 @@ static int dsi_display_drm_ext_get_modes(
 {
 	struct dsi_display *display = disp;
 	struct drm_bridge *ext_bridge;
-	const struct drm_edid *edid;
+	struct edid *edid;
 	int count = 0;
 
 	ext_bridge = dsi_display_get_ext_bridge(display);
@@ -7063,13 +7063,13 @@ static int dsi_display_drm_ext_get_modes(
 
 	if (ext_bridge->funcs->get_modes) {
 		count = ext_bridge->funcs->get_modes(ext_bridge, connector);
-	} else if (ext_bridge->funcs->edid_read) {
-		const struct drm_edid *drm_edid =
-			ext_bridge->funcs->edid_read(ext_bridge, connector);
-		if (!IS_ERR_OR_NULL(drm_edid)) {
-			drm_edid_connector_update(connector, drm_edid);
-			count = drm_edid_connector_add_modes(connector);
-			drm_edid_free(drm_edid);
+	} else if (ext_bridge->funcs->get_edid) {
+		/* Linux 5.10 DRM uses struct edid and the bridge get_edid API. */
+		edid = ext_bridge->funcs->get_edid(ext_bridge, connector);
+		if (!IS_ERR_OR_NULL(edid)) {
+			drm_connector_update_edid_property(connector, edid);
+			count = drm_add_edid_modes(connector, edid);
+			kfree(edid);
 		}
 	}
 	DSI_DEBUG("[%s] ext bridge get_modes count=%d\n", display->name, count);
