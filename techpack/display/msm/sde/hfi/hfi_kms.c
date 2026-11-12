@@ -472,6 +472,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 	u32 payload_size = HFI_PROP_SZ(hfi_prop);
 	u32 vig_index_count;
 	u32 dma_index_count;
+	int i;
 
 	if (!catalog || !payload)
 		return -EINVAL;
@@ -493,7 +494,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 			return read;
 		}
 		vig_index_count = payload[read++];
-		for (int i = 0; i < vig_index_count; i++, read++)
+		for (i = 0; i < vig_index_count; i++, read++)
 			if (REC_ID(payload[read]) == 0) {
 				catalog->vig_indices[catalog->vig_count] = payload[read];
 				catalog->vig_count++;
@@ -509,7 +510,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 		}
 
 		dma_index_count = payload[read++];
-		for (int i = 0; i < dma_index_count; i++, read++)
+		for (i = 0; i < dma_index_count; i++, read++)
 			if (REC_ID(payload[read]) == 0) {
 				catalog->dma_indices[catalog->dma_count] = payload[read];
 				catalog->dma_count++;
@@ -528,7 +529,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 		}
 
 		catalog->wb_count = payload[read++];
-		for (int i = 0; i < catalog->wb_count; i++, read++)
+		for (i = 0; i < catalog->wb_count; i++, read++)
 			catalog->wb_indices[i] = payload[read];
 		break;
 	case HFI_PROPERTY_DEVICE_INIT_MAX_WB_LINEAR_RESOLUTION:
@@ -544,7 +545,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 		}
 
 		catalog->dsi_count = payload[read++];
-		for (int i = 0; i < catalog->dsi_count; i++, read++)
+		for (i = 0; i < catalog->dsi_count; i++, read++)
 			catalog->dsi_indices[i] = payload[read];
 		break;
 	case HFI_PROPERTY_DEVICE_INIT_MAX_DSI_RESOLUTION:
@@ -557,7 +558,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 		}
 
 		catalog->dp_count = payload[read++];
-		for (int i = 0; i < catalog->dp_count; i++, read++)
+		for (i = 0; i < catalog->dp_count; i++, read++)
 			catalog->dp_indices[i] = payload[read];
 		break;
 	case HFI_PROPERTY_DEVICE_INIT_MAX_DP_RESOLUTION:
@@ -570,7 +571,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 		}
 
 		catalog->ds_count = payload[read++];
-		for (int i = 0; i < catalog->ds_count; i++, read++)
+		for (i = 0; i < catalog->ds_count; i++, read++)
 			catalog->ds_indices[i] = payload[read];
 		return read;
 	case HFI_PROPERTY_DEVICE_INIT_MAX_DS_RESOLUTION:
