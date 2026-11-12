@@ -8,6 +8,10 @@
 
 #include <linux/types.h>
 #include <linux/notifier.h>
+#include <linux/clk/qcom.h>
+#include <linux/ioport.h>
+#include <linux/pinctrl/qcom-pinctrl.h>
+#include <linux/qtee_shmbridge.h>
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <linux/soc/qcom/msm_mmrm.h>
 #include <linux/qcom-iommu-util.h>
@@ -48,14 +52,7 @@ enum subset_part_type {
 	NUM_PARTS_MAX,
 };
 
-enum branch_mem_flags {
-	CLKFLAG_RETAIN_PERIPH,
-	CLKFLAG_NORETAIN_PERIPH,
-	CLKFLAG_RETAIN_MEM,
-	CLKFLAG_NORETAIN_MEM,
-	CLKFLAG_PERIPH_OFF_SET,
-	CLKFLAG_PERIPH_OFF_CLEAR,
-};
+/* Clock flags come from the OEM clock API, not a second enum definition. */
 
 /* MMRM enums, callbacks and structs must match the real OEM 5.10 ABI.
  * Their definitions are in <linux/soc/qcom/msm_mmrm.h>; do not redeclare
@@ -92,55 +89,11 @@ struct llcc_staling_mode_params {
 	};
 };
 
-struct qtee_shm {
-	phys_addr_t paddr;
-	void *vaddr;
-	size_t size;
-};
-
-enum vmid {
-	VMID_TZ = 0x1,
-	VMID_HLOS = 0x3,
-	VMID_CP_TOUCH = 0x8,
-	VMID_CP_BITSTREAM = 0x9,
-	VMID_CP_PIXEL = 0xA,
-	VMID_CP_NON_PIXEL = 0xB,
-	VMID_CP_CAMERA = 0xD,
-	VMID_HLOS_FREE = 0xE,
-	VMID_MSS_MSA = 0xF,
-	VMID_MSS_NONMSA = 0x10,
-	VMID_CP_SEC_DISPLAY = 0x11,
-	VMID_CP_APP = 0x12,
-	VMID_LPASS = 0x16,
-	VMID_WLAN = 0x18,
-	VMID_WLAN_CE = 0x19,
-	VMID_CP_SPSS_SP = 0x1A,
-	VMID_CP_CAMERA_PREVIEW = 0x1D,
-	VMID_CP_SPSS_SP_SHARED = 0x22,
-	VMID_CP_SPSS_HLOS_SHARED = 0x24,
-	VMID_ADSP_HEAP = 0x25,
-	VMID_CP_CDSP = 0x2A,
-	VMID_NAV = 0x2B,
-	VMID_TVM = 0x2D,
-	VMID_OEMVM = 0x31,
-	VMID_LAST,
-	VMID_INVAL = -1
-};
-
-/* Stub definitions for <linux/soc/qcom/panel_event_notifier.h> */
-/* Panel events and Type-C altmode use the OEM kernel interfaces, including
- * their real driver callbacks and CONFIG-dependent unsupported behavior.
+/* QTEE shared-memory state, struct qtee_shm and secure-buffer VMIDs are
+ * supplied together by <linux/qtee_shmbridge.h>. In particular, never force
+ * the bridge to appear disabled when the OEM SCM driver has enabled it.
+ * GPIO resource lookup likewise uses the real OEM pinctrl implementation.
  */
-
-static inline bool qtee_shmbridge_is_enabled(void)
-{
-	return false;
-}
-
-static inline bool  msm_gpio_get_pin_address(const int gpio_pin, struct resource *res)
-{
-	return false;
-}
 
 /* Event notifier functions come from <linux/soc/qcom/panel_event_notifier.h>. */
 

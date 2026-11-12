@@ -7,6 +7,7 @@ on:
       - '.github/workflows/qualcomm-waipio-display-oem-abi.yml'
       - 'techpack/display/**'
       - 'tools/verify_official_qualcomm_display.py'
+      - 'tools/testing/pe_display_headers/**'
   workflow_dispatch:
 
 permissions:
@@ -93,6 +94,17 @@ jobs:
             echo '::error::OEM generic DRM cannot be enabled alongside Qualcomm vendor DRM trial'
             exit 1
           fi
+      - name: Compile Display and OEM headers in both include orders
+        run: |
+          set -euo pipefail
+          export PATH=/tmp/google-clang/clang-r614150/bin:$PATH
+          export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+          make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 modules_prepare
+          make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 \
+            M="$GITHUB_WORKSPACE/tools/testing/pe_display_headers" \
+            DISPLAY_ROOT="$GITHUB_WORKSPACE/techpack/display" \
+            compat_first.o oem_first.o \
+            2>&1 | tee "$RUNNER_TEMP/display-header-probe.log"
       - name: Build OEM vmlinux Image and in-tree modules for actual Module.symvers
         run: |
           set -euo pipefail
@@ -151,5 +163,6 @@ jobs:
             ${{ runner.temp }}/mondrian-out/.config
             ${{ runner.temp }}/mondrian-out/Module.symvers
             ${{ runner.temp }}/oem-base-kernel.log
+            ${{ runner.temp }}/display-header-probe.log
             ${{ runner.temp }}/qualcomm-msm-drm-build.log
             ${{ runner.temp }}/display-abi-evidence.json

@@ -975,15 +975,13 @@ static int sde_hdcp_2x_main(void *data)
 {
 	struct sde_hdcp_2x_ctrl *hdcp = data;
 	enum sde_hdcp_2x_wakeup_cmd cmd;
+	struct sched_param param = { .sched_priority = 16 };
+	int ret;
 
-	struct sched_param param = {.sched_priority = 16};
-
-#if ___has_include(<external/ltp/include/tst_sched.h>)
-	int ret = sched_setscheduler(current, SCHED_FIFO, &param);
+	ret = sched_setscheduler(current, SCHED_FIFO, &param);
 
 	if (ret)
 		pr_err("Failed to set sde hdcp thread priority: %d\n", ret);
-#endif
 
 	while (1) {
 		wait_event_idle(hdcp->wait_q,
