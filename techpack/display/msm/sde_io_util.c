@@ -596,7 +596,7 @@ int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 	*mmrm_enable = false;
 
 	for (i = 0; i < num_clk; i++) {
-		struct mmrm_client_desc desc;
+		struct mmrm_client_desc desc = {0};
 		char *name = (char *)desc.client_info.desc.name;
 		struct dss_clk_mmrm_cb *mmrm_cb_data;
 
