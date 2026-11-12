@@ -16,7 +16,8 @@ EXPECTED_BLOBS = {
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
     "msm/Kbuild": "26744bed61323b4bd7267b11da6577867ff58c65",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
-    "msm/qcom_display_internal.h": "cc077b67b1ec12aa0afa07f763bfad29cdd76df2",
+    "msm/qcom_display_internal.h": "c6daf3c7dc0cb1cedceff1db5d3981330d869089",
+    "msm/dp/dp_panel.h": "64d287309a78ac09d8e2eeccfcc484448c40f187",
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",
@@ -70,6 +71,14 @@ def main():
     check("static inline void *panel_event_notifier_register(" not in compat and
           "static inline void *ipc_log_context_destroy(" not in compat,
           "Upstream no-op panel/logging callbacks are forbidden")
+    check("#include <soc/qcom/of_common.h>" in compat and
+          "static inline int of_fdt_get_ddrtype(" not in compat,
+          "Display DDR type must come from the real OEM OF API")
+    dp = (DISPLAY / "msm/dp/dp_panel.h").read_text()
+    check("#define DP_LTTPR_COMMON_CAP_SIZE 8" in dp and
+          "DP_LT_TUNABLE_PHY_REPEATER_FIELD_DATA_STRUCTURE_REV" in dp and
+          "DP_PHY_REPEATER_CNT" in dp,
+          "LTTPR capability buffer must use verified upstream size and OEM DPCD registers")
     check("enum mmrm_cb_type {" not in compat and
           "enum sid_switch_direction {" not in compat,
           "Display must not redeclare kernel MMRM/IOMMU enums")
