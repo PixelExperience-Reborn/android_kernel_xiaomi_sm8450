@@ -8,6 +8,7 @@
 #define _DP_PANEL_H_
 
 #include <drm/sde_drm.h>
+#include <drm/drm_dp_helper.h>
 
 #include "dp_aux.h"
 #include "dp_link.h"
@@ -15,6 +16,19 @@
 #include "sde_connector.h"
 #include "msm_drv.h"
 #include "dp_panel_tu.h"
+
+/* OEM Linux 5.10 already has LTTPR DPCD register definitions but does not
+ * export the common-capability buffer size. Upstream Linux v6.12
+ * include/drm/display/drm_dp.h defines DP_LTTPR_COMMON_CAP_SIZE as 8.
+ * Backport only the standard size; require the underlying DPCD registers.
+ */
+#ifndef DP_LTTPR_COMMON_CAP_SIZE
+#if !defined(DP_LT_TUNABLE_PHY_REPEATER_FIELD_DATA_STRUCTURE_REV) || \
+    !defined(DP_PHY_REPEATER_CNT)
+#error "Kernel lacks LTTPR DPCD register definitions; display needs real DP support"
+#endif
+#define DP_LTTPR_COMMON_CAP_SIZE 8
+#endif
 
 #define DP_RECEIVER_DSC_CAP_SIZE    15
 #define DP_RECEIVER_FEC_STATUS_SIZE 3
