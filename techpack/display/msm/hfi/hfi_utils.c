@@ -89,12 +89,13 @@ u32 hfi_util_kv_helper_get_count(struct hfi_util_kv_helper *kv_helper)
 
 void hfi_util_kv_helper_dump(struct hfi_util_kv_helper *kv_helper)
 {
+	int i;
 	if (!kv_helper) {
 		SDE_ERROR("invalid kv helper\n");
 		return;
 	}
 
-	for (int i = 0; i < kv_helper->cur; i++)
+	for (i = 0; i < kv_helper->cur; i++)
 		SDE_ERROR("info  - key[%d] =%d val=%p\n", i, kv_helper->kv_pairs[i].key,
 				kv_helper->kv_pairs[i].value_ptr);
 
