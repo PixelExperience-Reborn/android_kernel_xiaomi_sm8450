@@ -19,6 +19,7 @@ EXPECTED_BLOBS = {
     "msm/qcom_display_internal.h": "574d1c903e6c04edfc247f76dd829c25f92c5e66",
     "msm/sde_hdcp_2x.c": "9a497ce0370a33a02822cff6ec06e33cc209c9ca",
     "msm/dp/dp_panel.h": "64d287309a78ac09d8e2eeccfcc484448c40f187",
+    "msm/dp/dp_mst_sim.c": "9f8c1351862a4eaf540a7f7061ef779ca820c21b",
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",

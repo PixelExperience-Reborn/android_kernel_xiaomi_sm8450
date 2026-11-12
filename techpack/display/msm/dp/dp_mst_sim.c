@@ -86,10 +86,12 @@ struct dp_sim_debug_edid_entry {
 #define to_dp_sim_dev(x) container_of((x), struct dp_sim_device, bridge)
 
 static const struct dp_mst_sim_port output_port = {
-	false, false, true, 3, false, 0x12,
-	{{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-	0, 0, 2520, 2520, NULL, 0
+	.ddps = true,
+	.pdt = DP_PEER_DEVICE_SST_SINK,
+	.dpcd_rev = 0x12,
+	/* peer_guid is zero-initialized for both u8[16] and guid_t. */
+	.full_pbn = 2520,
+	.avail_pbn = 2520,
 };
 
 static int dp_sim_register_hpd(struct dp_aux_bridge *bridge,
