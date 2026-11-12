@@ -157,6 +157,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct dsi_display_hfi *display_hfi;
 	struct misr_setup_data misr_data;
+	struct drm_connector *drm_conn;
 	u32 obj_id;
 	int rc = 0;
 
@@ -167,7 +168,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	if (!display_hfi)
 		return -EINVAL;
 
-	struct drm_connector *drm_conn = display->drm_conn;
+	drm_conn = display->drm_conn;
 
 	if (!drm_conn)
 		return -EINVAL;
@@ -1127,16 +1128,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	u32 object_id = 0x0;
 	int num_caps = panel_generic_caps.valid_gen_caps_cnt;
 	struct dsi_display_hfi *display_hfi;
-
-	if (!display)
-		return -EINVAL;
-
-	display_hfi = display->dsi_hfi_info;
-	if (!display_hfi)
-		return -EINVAL;
-
-	hfi_util_kv_helper_reset(display_hfi->kv_props);
-
+	/* The mapping is initialized before the executable statements (GNU89). */
 	struct dsi_value_to_prop_lookup dsi_hfi_gen_props_map[] = {
 		{panel_generic_caps.panel_type, HFI_PROPERTY_PANEL_PHYSICAL_TYPE},
 		{panel_generic_caps.color_order_type, HFI_PROPERTY_PANEL_COLOR_ORDER},
@@ -1167,6 +1159,16 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE},
 		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV},
 	};
+
+	if (!display)
+		return -EINVAL;
+
+	display_hfi = display->dsi_hfi_info;
+	if (!display_hfi)
+		return -EINVAL;
+
+	hfi_util_kv_helper_reset(display_hfi->kv_props);
+
 
 	/* Populate properties that will take on a default value, even if not present */
 	for (i = 0; i < MIN_NUM_OF_GEN_CAPS; i++) {
@@ -1341,6 +1343,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	struct dsi_panel_init_caps panel_init_caps;
 	struct dsi_panel_generic_caps panel_generic_caps;
 	struct dsi_panel_timing_caps *timing_caps_array;
+	struct hfi_cmdbuf_t *buffer;
 	int i;
 	int rc = 0;
 	u32 obj_id;
@@ -1357,7 +1360,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	if (!display_hfi)
 		return -EINVAL;
 
-	struct hfi_cmdbuf_t *buffer = hfi_adapter_get_cmd_buf(display_hfi->hfi_client,
+	buffer = hfi_adapter_get_cmd_buf(display_hfi->hfi_client,
 							obj_id,
 							HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 
