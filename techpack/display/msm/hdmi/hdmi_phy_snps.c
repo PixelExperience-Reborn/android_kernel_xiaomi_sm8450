@@ -250,8 +250,9 @@ static void hdmi_phy_snps_sram_init_wait(struct hdmi_phy *phy,
 static bool hdmi_phy_snps_tx_ack_wait(struct hdmi_phy *phy)
 {
 	bool rv = true;
+	int i;
 
-	for (int i = 0; i < PHY_TXn_CONTROL; i++) {
+	for (i = 0; i < PHY_TXn_CONTROL; i++) {
 		rv &= hdmi_phy_read_poll_timeout(phy,
 				HDMI_PHY_TXn_CONTROL_2 + i*0x34, BIT(0));
 		if (!rv)
