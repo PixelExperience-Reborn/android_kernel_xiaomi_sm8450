@@ -207,6 +207,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 
 static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
 {
+	int i;
 	struct misr_read_data_ret *misr_data;
 	struct dsi_misr_values *misr_read_values;
 	u32 max_count = 0;
@@ -224,6 +225,11 @@ static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload
 	misr_data = (struct misr_read_data_ret *)payload;
 
 	max_count = misr_data->num_misr;
+	if (max_count > MAX_MISR_MODULES) {
+		DSI_ERR("MISR count %u exceeds %u modules\n",
+			max_count, MAX_MISR_MODULES);
+		return;
+	}
 	module_type = misr_data->module_type;
 	DSI_DEBUG("Module type:%d, Max_count:%d\n",
 		module_type, max_count);
@@ -231,7 +237,7 @@ static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload
 
 	memset(&misr_read_values->misr_values, 0, sizeof(u32) * MAX_MISR_MODULES);
 
-	for (int i = 0; i < max_count; i++)
+	for (i = 0; i < max_count; i++)
 		misr_read_values->misr_values[i] = misr_values[i];
 
 	misr_read_values->count = max_count;
