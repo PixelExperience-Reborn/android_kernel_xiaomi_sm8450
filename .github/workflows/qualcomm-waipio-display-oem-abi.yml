@@ -1,0 +1,155 @@
+name: Qualify official Qualcomm WAIPIO display against PE-Reborn Xiaomi OEM kernel
+
+on:
+  push:
+    branches: [bringup/a17-mondrian-qualcomm-display-trial-20261109]
+    paths:
+      - '.github/workflows/qualcomm-waipio-display-oem-abi.yml'
+      - 'techpack/display/**'
+      - 'tools/verify_official_qualcomm_display.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mondrian-oem-qualcomm-display-abi
+  cancel-in-progress: true
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify exact official Qualcomm source and separate Xiaomi DRM
+        run: |
+          set -euo pipefail
+          python3 tools/verify_official_qualcomm_display.py
+          test -f techpack/display/msm/Kbuild
+          test -f techpack/display/config/gki_waipiodisp.conf
+          ! grep -Eq '^CONFIG_DRM_MSM=' arch/arm64/configs/vendor/mondrian_GKI.config
+          echo '[PASS] Qualcomm WAIPIO display source pinned; Xiaomi generic DRM not enabled' >> "$GITHUB_STEP_SUMMARY"
+
+  compile:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - name: Checkout previously staged official Qualcomm display source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout the exact OEM kernel ABI used by WLAN and MMRM
+        uses: actions/checkout@v4
+        with:
+          repository: PixelExperience-Reborn/android_kernel_xiaomi_sm8450
+          ref: 2466406b9beac724960b0c88e6e794421d0466e7
+          path: kernel
+          persist-credentials: false
+      - name: Checkout qualified Qualcomm MMRM and reusable host prerequisites
+        uses: actions/checkout@v4
+        with:
+          repository: PixelExperience-Reborn/android_kernel_xiaomi_sm8450-modules
+          ref: 95b795b6167bc83c1b3fa5d68f85b0906808c51c
+          path: external-modules
+          submodules: recursive
+          persist-credentials: false
+      - name: Install signed OEM kernel build prerequisites
+        timeout-minutes: 13
+        run: bash external-modules/tools/install_ci_prerequisites.sh
+      - name: Restore pinned Google Android LLVM23 compiler
+        id: clang-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/google-clang
+          key: mondrian-a17-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119
+      - name: Fetch pinned Google Android LLVM23 when not cached
+        if: steps.clang-cache.outputs.cache-hit != 'true'
+        run: bash kernel/tools/fetch_android_kernel_clang.sh /tmp/google-clang
+      - uses: actions/cache/save@v4
+        if: steps.clang-cache.outputs.cache-hit != 'true'
+        with:
+          path: /tmp/google-clang
+          key: mondrian-a17-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119
+      - name: Reproduce exact OEM mondrian GKI configuration
+        run: |
+          set -euo pipefail
+          export PATH=/tmp/google-clang/clang-r614150/bin:$PATH
+          export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+          test "$(git -C kernel rev-parse HEAD)" = 2466406b9beac724960b0c88e6e794421d0466e7
+          test "$(git -C /tmp/google-clang rev-parse HEAD)" = c9ed23e2ba198658b630d4b10e09fa980cd43119
+          mkdir -p "$RUNNER_TEMP/mondrian-out"
+          make -C kernel O="$RUNNER_TEMP/mondrian-out" gki_defconfig
+          bash kernel/scripts/kconfig/merge_config.sh -m -r \
+            -O "$RUNNER_TEMP/mondrian-out" \
+            "$RUNNER_TEMP/mondrian-out/.config" \
+            kernel/arch/arm64/configs/vendor/mondrian_GKI.config
+          make -C kernel O="$RUNNER_TEMP/mondrian-out" olddefconfig
+          python3 kernel/tools/verify_mondrian_oem_eroFS.py \
+            --generated-config "$RUNNER_TEMP/mondrian-out/.config"
+          if grep -Eq '^CONFIG_DRM_MSM=[ym]' "$RUNNER_TEMP/mondrian-out/.config"; then
+            echo '::error::OEM generic DRM cannot be enabled alongside Qualcomm vendor DRM trial'
+            exit 1
+          fi
+      - name: Build OEM vmlinux Image and in-tree modules for actual Module.symvers
+        run: |
+          set -euo pipefail
+          export PATH=/tmp/google-clang/clang-r614150/bin:$PATH
+          export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+          make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 vmlinux Image modules \
+            2>&1 | tee "$RUNNER_TEMP/oem-base-kernel.log"
+          test -s "$RUNNER_TEMP/mondrian-out/Module.symvers"
+      - name: Build already-qualified official MMRM against the same OEM ABI
+        run: |
+          set -euo pipefail
+          export PATH=/tmp/google-clang/clang-r614150/bin:$PATH
+          export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+          mmrm="$GITHUB_WORKSPACE/external-modules/upstream/qualcomm/mmrm"
+          test -f "$mmrm/driver/Kbuild"
+          make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 \
+            M="$mmrm/driver" MMRM_ROOT="$mmrm" CONFIG_MSM_MMRM=y \
+            KCFLAGS="-include $mmrm/config/waipiommrmconf.h" modules
+          test -s "$mmrm/driver/msm-mmrm.ko"
+          test -s "$mmrm/driver/Module.symvers"
+      - name: Attempt real Qualcomm SDE/DSI msm_drm.ko build against OEM kernel
+        run: |
+          set -euo pipefail
+          export PATH=/tmp/google-clang/clang-r614150/bin:$PATH
+          export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+          display="$GITHUB_WORKSPACE/techpack/display"
+          mmrm_sym="$GITHUB_WORKSPACE/external-modules/upstream/qualcomm/mmrm/driver/Module.symvers"
+          test -f "$display/msm/Kbuild"
+          test -s "$mmrm_sym"
+          # Manufacturer M11A/LHBM additions and external mm-drivers dependencies
+          # have NOT been assumed present. Let actual Kbuild report gaps.
+          make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 \
+            M="$display/msm" DISPLAY_ROOT="$display" \
+            KERNEL_SRC="$GITHUB_WORKSPACE/kernel" KERNEL_ROOT="$GITHUB_WORKSPACE/kernel" \
+            OUT="$RUNNER_TEMP/mondrian-out" \
+            KBUILD_EXTRA_SYMBOLS="$mmrm_sym" modules \
+            2>&1 | tee "$RUNNER_TEMP/qualcomm-msm-drm-build.log"
+          test -s "$display/msm/msm_drm.ko"
+          modinfo -F name "$display/msm/msm_drm.ko" | grep -Fx msm_drm
+          modinfo -F vermagic "$display/msm/msm_drm.ko"
+          python3 external-modules/tools/verify_external_module_abi.py \
+            --kernel kernel --kernel-out "$RUNNER_TEMP/mondrian-out" \
+            --module "$display/msm/msm_drm.ko" \
+            --out "$RUNNER_TEMP/display-abi-evidence.json"
+          echo '[PASS] Official Qualcomm display msm_drm.ko compiles against pinned OEM KMI' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] M11A LHBM/FOD, firmware, HWC, DTBO, vendor_dlkm and on-device tests' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve compiler diagnostics without claiming hardware success
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mondrian-oem-qualcomm-display-abi-diagnostic
+          retention-days: 7
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/mondrian-out/.config
+            ${{ runner.temp }}/mondrian-out/Module.symvers
+            ${{ runner.temp }}/oem-base-kernel.log
+            ${{ runner.temp }}/qualcomm-msm-drm-build.log
+            ${{ runner.temp }}/display-abi-evidence.json
