@@ -182,9 +182,11 @@ enum hfi_color_formats {
 };
 
 /**
- * \brief Typedefs for unsigned integer types
- *
+ * Userspace-only integer aliases. In a Linux kernel build, <linux/types.h>
+ * already supplies u8/u16/u32/u64; redeclaring them is invalid and breaks
+ * Android LLVM23 -Werror. Keep these aliases for non-kernel consumers.
  */
+#ifndef __KERNEL__
 #ifndef u8
 typedef uint8_t u8;   /**< Unsigned 8-bit integer */
 #endif
@@ -197,6 +199,8 @@ typedef uint32_t u32; /**< Unsigned 32-bit integer */
 #ifndef u64
 typedef uint64_t u64; /**< Unsigned 64-bit integer */
 #endif
+
+#endif /* !__KERNEL__ */
 
 /*
  * struct hfi_buff - hfi buffer
