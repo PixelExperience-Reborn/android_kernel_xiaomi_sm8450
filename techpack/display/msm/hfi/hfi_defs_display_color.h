@@ -6,9 +6,8 @@
 #ifndef __H_HFI_DEFS_DISPLAY_COLOR_H__
 #define __H_HFI_DEFS_DISPLAY_COLOR_H__
 
+#include <linux/types.h>
 #include "hfi_defs_common.h"
-
-typedef signed int s32;
 
 /**
  * @brief Enable the feature.
