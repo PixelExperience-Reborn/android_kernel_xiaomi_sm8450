@@ -641,6 +641,7 @@ static void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *p
 	u32 max_count = 0;
 	u32 module_type = 0;
 	u32 *misr_values;
+	int i;
 
 	if (!hfi_listener)
 		return;
@@ -659,6 +660,11 @@ static void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *p
 	misr_data = (struct misr_read_data_ret *)payload;
 
 	max_count = misr_data->num_misr;
+	if (max_count > MAX_MISR_MODULES) {
+		SDE_ERROR("MISR count %u exceeds %u modules\n",
+			max_count, MAX_MISR_MODULES);
+		return;
+	}
 	module_type = misr_data->module_type;
 	SDE_DEBUG("crtc_id:%d, Module_type:%d, Max_count:%d\n",
 			HFI_CRTC_ID(hfi_crtc), module_type, max_count);
@@ -666,7 +672,7 @@ static void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *p
 
 	memset(&misr_read_values->misr_values, 0, sizeof(u32) * MAX_MISR_MODULES);
 
-	for (int i = 0; i < max_count; i++)
+	for (i = 0; i < max_count; i++)
 		misr_read_values->misr_values[i] = misr_values[i];
 
 	misr_read_values->count = max_count;
