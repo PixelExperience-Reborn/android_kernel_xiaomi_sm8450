@@ -3497,12 +3497,14 @@ static const struct component_ops dsi_display_comp_ops = {
 static int dsi_panel_update_from_mipi_dsi_device(struct dsi_panel *panel,
 						   const struct mipi_dsi_device *dsi)
 {
+	struct dsi_host_common_cfg *host;
+
 	if (!panel || !dsi) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	struct dsi_host_common_cfg *host = &panel->host_config;
+	host = &panel->host_config;
 
 	/* store upstream config fields into panel->mipi_device */
 	panel->mipi_device.lanes      = dsi->lanes;
@@ -3588,12 +3590,16 @@ static int dsi_host_attach(struct mipi_dsi_host *host,
 	int rc = 0;
 
 	rc = dsi_panel_update_from_mipi_dsi_device(display->panel, dsi);
-	if (rc)
+	if (rc) {
 		DSI_ERR("Invalid Params rc=%d\n", rc);
+		return rc;
+	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
+	if (rc) {
 		DSI_ERR("component add failed rc=%d\n", rc);
+		return rc;
+	}
 
 	DSI_DEBUG("component add success\n");
 	return 0;
@@ -3603,9 +3609,10 @@ static int dsi_host_detach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
 	struct dsi_display *display;
-	display = to_dsi_display(host);
+	struct platform_device *pdev;
 
-	struct platform_device *pdev = display->pdev;
+	display = to_dsi_display(host);
+	pdev = display->pdev;
 
 	component_del(&pdev->dev, &dsi_display_comp_ops);
 
