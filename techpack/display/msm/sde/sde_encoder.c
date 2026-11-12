@@ -9629,6 +9629,7 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 	struct sde_connector *sde_conn;
 	enum msm_disp_op disp_op;
 	bool is_cmd, is_vid;
+	int ret;
 
 	if (!kms || !crtc || !crtc->state || !crtc->dev) {
 		SDE_ERROR("invalid params\n");
@@ -9638,6 +9639,7 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 	dev = crtc->dev;
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		sde_conn = NULL;
 		if (encoder->crtc != crtc)
 			continue;
 
@@ -9667,12 +9669,13 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 				sde_encoder_phys_inc_pending(cur_master);
 		}
 
-		int ret = sde_encoder_wait_for_event(encoder, MSM_ENC_TX_COMPLETE);
+		ret = sde_encoder_wait_for_event(encoder, MSM_ENC_TX_COMPLETE);
 
 		if (ret && ret != -EWOULDBLOCK) {
 			SDE_INFO(
 			"[crtc: %d][enc: %d][vhm_cap: %d][panel:%d][ret: %d]\n",
-			crtc->base.id, encoder->base.id, sde_conn->vrr_caps.has_vhm_capability,
+			crtc->base.id, encoder->base.id,
+			(sde_conn && sde_conn->vrr_caps.has_vhm_capability),
 			is_vid, ret);
 			break;
 		}
