@@ -11,6 +11,7 @@
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <linux/soc/qcom/msm_mmrm.h>
 #include <linux/qcom-iommu-util.h>
+#include <linux/qcom_scm.h>
 #include <linux/errno.h>
 #include <linux/of.h>
 
@@ -57,19 +58,9 @@ enum branch_mem_flags {
  * newer incompatible CESTA layouts in an external display module.
  */
 
-/* Stub definitions for <soc/qcom/crm.h> */
-#ifndef _SOC_QCOM_CRM_H_
-#define _SOC_QCOM_CRM_H_
-
-/* Define any necessary structures or functions from crm.h */
-static inline int qcom_scm_mem_protect_sd_ctrl(u32 device_id, phys_addr_t mem_addr,
-		u64 mem_size, u32 vmid)
-{
-	/* Stub implementation */
-	return 0;
-}
-
-#endif /* _SOC_QCOM_CRM_H_ */
+/* SDE secure-memory ownership is managed by the real OEM SCM API in
+ * <linux/qcom_scm.h>. Do not substitute a no-op success path here.
+ */
 
 /**
  * Enum describing the various staling modes available for clients to use.
