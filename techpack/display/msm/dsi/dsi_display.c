@@ -558,7 +558,7 @@ error:
 static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 {
 	int rc = 0, cnt = 0;
-	struct dsi_display_ctrl *display_ctrl;
+	struct dsi_display_ctrl *display_ctrl = &display->ctrl[0];
 
 	display->tx_cmd_buf = msm_gem_new(display->drm_dev,
 			SZ_4K,
@@ -626,11 +626,13 @@ free_aspace_cb:
 			dsi_display_aspace_cb_locked, display);
 free_gem:
 #if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
-	mutex_lock(&display_ctrl->ctrl->ctrl_lock);
+	if (display->ctrl_count && display_ctrl->ctrl)
+		mutex_lock(&display_ctrl->ctrl->ctrl_lock);
 #endif
 	msm_gem_free_object(display->tx_cmd_buf);
 #if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
-	mutex_unlock(&display_ctrl->ctrl->ctrl_lock);
+	if (display->ctrl_count && display_ctrl->ctrl)
+		mutex_unlock(&display_ctrl->ctrl->ctrl_lock);
 #endif
 error:
 	return rc;
