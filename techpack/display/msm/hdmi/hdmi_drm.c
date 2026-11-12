@@ -388,7 +388,7 @@ int hdmi_connector_install_properties(void *display, struct drm_connector *conn)
 	 */
 	if (!base_conn->colorspace_property) {
 		/* This is the base connector. create the drm property */
-		rc = drm_mode_create_hdmi_colorspace_property(base_conn, 0);
+		rc = drm_mode_create_hdmi_colorspace_property(base_conn);
 		if (rc)
 			return rc;
 	} else {
@@ -401,7 +401,6 @@ int hdmi_connector_install_properties(void *display, struct drm_connector *conn)
 }
 
 static int hdmi_bridge_attach(struct drm_bridge *hdmi_bridge,
-				struct drm_encoder *encoder,
 				enum drm_bridge_attach_flags flags)
 {
 	struct hdmi_bridge *bridge = to_hdmi_bridge(hdmi_bridge);
