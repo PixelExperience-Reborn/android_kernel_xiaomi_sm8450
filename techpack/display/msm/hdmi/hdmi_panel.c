@@ -3,7 +3,6 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #include <drm/drm_edid.h>
-#include <drm/display/drm_hdmi_helper.h>
 
 #include "hdmi_panel.h"
 #include "hdmi_debug.h"
