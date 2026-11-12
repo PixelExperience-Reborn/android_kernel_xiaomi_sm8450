@@ -12,6 +12,9 @@
 #include <linux/soc/qcom/msm_mmrm.h>
 #include <linux/qcom-iommu-util.h>
 #include <linux/qcom_scm.h>
+#include <linux/soc/qcom/panel_event_notifier.h>
+#include <linux/soc/qcom/altmode-glink.h>
+#include <linux/ipc_logging.h>
 #include <linux/errno.h>
 #include <linux/of.h>
 
@@ -124,115 +127,9 @@ enum vmid {
 };
 
 /* Stub definitions for <linux/soc/qcom/panel_event_notifier.h> */
-#ifndef _LINUX_SOC_QCOM_PANEL_EVENT_NOTIFIER_H_
-#define _LINUX_SOC_QCOM_PANEL_EVENT_NOTIFIER_H_
-
-/* Define panel event notifier related structures and functions */
-enum panel_event_notifier_tag {
-	PANEL_EVENT_NOTIFICATION_NONE,
-	PANEL_EVENT_NOTIFICATION_PRIMARY,
-	PANEL_EVENT_NOTIFICATION_SECONDARY,
-	PANEL_EVENT_NOTIFICATION_MAX
-};
-
-enum panel_event_notifier_client {
-	PANEL_EVENT_NOTIFIER_CLIENT_PRIMARY_TOUCH,
-	PANEL_EVENT_NOTIFIER_CLIENT_SECONDARY_TOUCH,
-	PANEL_EVENT_NOTIFIER_CLIENT_ECM,
-	PANEL_EVENT_NOTIFIER_CLIENT_MAX
-};
-
-enum panel_event_notification_type {
-	DRM_PANEL_EVENT_NONE,
-	DRM_PANEL_EVENT_BLANK,
-	DRM_PANEL_EVENT_UNBLANK,
-	DRM_PANEL_EVENT_BLANK_LP,
-	DRM_PANEL_EVENT_FPS_CHANGE,
-	DRM_PANEL_EVENT_MAX
-};
-
-struct panel_event_notification_data {
-	int old_fps;
-	int new_fps;
-	bool early_trigger;
-};
-
-struct panel_event_notification {
-	enum panel_event_notification_type notif_type;
-	void *panel;
-	struct panel_event_notification_data notif_data;
-};
-
-/*altmode dummy*/
-struct altmode_pan_ack_msg {
-		u32 cmd_type;
-		u8 port_index;
-};
-
-enum altmode_send_msg_type {
-		ALTMODE_PAN_EN = 0x10,
-		ALTMODE_PAN_ACK,
-};
-
-/**
- ** struct altmode_client_data
- **	Uniquely define altmode client while registering with altmode framework.
- **
- ** @svid:		Unique ID for Type-C Altmode client devices
- ** @name:		Short descriptive name to identify client
- ** @priv:		Pointer to client driver's internal top level structure
- ** @callback:		Callback function to receive PMIC GLINK message data
- **/
-struct altmode_client_data {
-		u16	svid;
-		const char	*name;
-		void		*priv;
-		int		(*callback)(void *priv, void *data, size_t len);
-};
-
-#if IS_ENABLED(CONFIG_QTI_ALTMODE_GLINK)
-
-struct device;
-int altmode_register_notifier(struct device *client_dev, void (*cb)(void *),
-					void *priv);
-int altmode_deregister_notifier(struct device *client_dev, void *priv);
-struct altmode_client *altmode_register_client(struct device *dev,
-				const struct altmode_client_data *client_data);
-int altmode_deregister_client(struct altmode_client *client);
-int altmode_send_data(struct altmode_client *client, void *data, size_t len);
-
-#else
-
-static inline int altmode_register_notifier(struct device *client_dev,
-				void (*cb)(void *), void *priv)
-{
-		return -ENODEV;
-}
-
-static inline int altmode_deregister_notifier(struct device *client_dev,
-				void *priv)
-{
-		return -ENODEV;
-}
-
-static inline struct altmode_client *altmode_register_client(struct device *dev,
-			const struct altmode_client_data *client_data)
-{
-		return ERR_PTR(-ENODEV);
-}
-
-static inline int altmode_deregister_client(struct altmode_client *client)
-{
-		return -ENODEV;
-}
-
-static inline int altmode_send_data(struct altmode_client *client, void *data,
-					size_t len)
-{
-		return -ENODEV;
-}
-
-#endif
+/* Panel events and Type-C altmode use the OEM kernel interfaces, including
+ * their real driver callbacks and CONFIG-dependent unsupported behavior.
+ */
 
 static inline bool qtee_shmbridge_is_enabled(void)
 {
@@ -244,27 +141,7 @@ static inline bool  msm_gpio_get_pin_address(const int gpio_pin, struct resource
 	return false;
 }
 
-static inline void *panel_event_notifier_register(enum panel_event_notifier_tag tag,
-		enum panel_event_notifier_client client,
-		void *handle,
-		void (*cb_fn)(struct panel_event_notification *notification,
-				void *data),
-		void *data)
-{
-	/* Stub implementation */
-	return NULL;
-}
-
-static inline void panel_event_notifier_unregister(void *cookie)
-{
-	/* Stub implementation */
-}
-
-static inline void panel_event_notification_trigger(enum panel_event_notifier_tag tag,
-		struct panel_event_notification *notification)
-{
-	/* Stub implementation */
-}
+/* Event notifier functions come from <linux/soc/qcom/panel_event_notifier.h>. */
 
 static int llcc_configure_staling_mode(struct llcc_slice_desc *desc,
 				struct llcc_staling_mode_params *p)
@@ -277,20 +154,10 @@ static int llcc_notif_staling_inc_counter(struct llcc_slice_desc *desc)
 	return -EINVAL;
 }
 
-#endif /* _LINUX_SOC_QCOM_PANEL_EVENT_NOTIFIER_H_ */
 
-static inline void *ipc_log_context_destroy(void *ctxt)
-{
-	return NULL;
-}
-static inline void ipc_log_string(void *ilctxt, const char *fmt, ...)
-{
-}
-static inline void *ipc_log_context_create(int max_num_pages,
-	const char *modname, uint32_t feature_version)
-{
-	return NULL;
-}
+
+/* Logging uses the real OEM <linux/ipc_logging.h> implementation. */
+
 /**
  * * of_fdt_get_ddrtype - Return the type of ddr (4/5) on the current device
  * *
