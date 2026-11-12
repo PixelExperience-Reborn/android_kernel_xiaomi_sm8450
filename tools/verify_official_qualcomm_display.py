@@ -16,7 +16,7 @@ EXPECTED_BLOBS = {
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
     "msm/Kbuild": "26744bed61323b4bd7267b11da6577867ff58c65",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
-    "msm/qcom_display_internal.h": "386d494b3ad66140f6b2b548fd0880bdcfa49657",
+    "msm/qcom_display_internal.h": "83a6661d0c420978cdec8f06c61a8956dda19674",
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",
@@ -59,6 +59,9 @@ def main():
     check("#include <linux/soc/qcom/msm_mmrm.h>" in compat and
           "#include <linux/qcom-iommu-util.h>" in compat,
           "Display must use the actual OEM MMRM and IOMMU declarations")
+    check("#include <linux/qcom_scm.h>" in compat and
+          "static inline int qcom_scm_mem_protect_sd_ctrl(" not in compat,
+          "SDE secure memory must use real OEM SCM, never a fake success stub")
     check("enum mmrm_cb_type {" not in compat and
           "enum sid_switch_direction {" not in compat,
           "Display must not redeclare kernel MMRM/IOMMU enums")
