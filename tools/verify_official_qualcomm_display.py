@@ -14,7 +14,8 @@ DISPLAY = ROOT / "techpack/display"
 EXPECTED_BLOBS = {
     "Kbuild": "cd50990e1abfbbbf37862c1fb5b231c1cc07571b",
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
-    "msm/Kbuild": "2befa99fc392918f01370f428204a1de1810ba02",
+    "msm/Kbuild": "26744bed61323b4bd7267b11da6577867ff58c65",
+    "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",
 }
@@ -41,6 +42,16 @@ def main():
         check(item.is_file(), f"missing Qualcomm driver source: {relative}")
         check(hash_blob(item.read_bytes()) == digest,
               f"unreviewed Qualcomm driver change: {relative}")
+
+    # Verified compatibility adjustments in this isolated Qualcomm trial:
+    # Clang 23 has no GCC-only maybe-uninitialized suppression option;
+    # OEM Linux 5.10 provides <stdarg.h> rather than <linux/stdarg.h>.
+    check("-Wno-maybe-uninitialized" not in
+          (DISPLAY / "msm/Kbuild").read_text(),
+          "GCC-only display warning flag must not reach Android LLVM23")
+    check("#include <stdarg.h>" in
+          (DISPLAY / "msm/sde_dbg.h").read_text(),
+          "SDE must use the Linux 5.10 compatible variadic header")
 
     original = ROOT / "drivers/gpu/drm/msm/Makefile"
     check(hash_blob(original.read_bytes()) == OEM_GENERIC_MAKEFILE_SHA,
@@ -74,7 +85,7 @@ def main():
           "unexpected unreviewed multimedia dependency imported")
 
     print(f"[PASS] {imported_count} official Qualcomm display-source paths")
-    print("[PASS] WAIPIO SDE/DSI module source and exact pinned Git blobs")
+    print("[PASS] WAIPIO SDE/DSI source pinned with reviewed Linux 5.10/LLVM23 adjustments")
     print("[PASS] original Xiaomi generic DRM unchanged and not selected")
     print("[BLOCKED] new Qualcomm msm_drm.ko needs Linux 5.10 KAPI/KMI "
           "and multimedia-header compatibility verification")
