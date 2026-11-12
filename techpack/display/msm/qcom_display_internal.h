@@ -9,6 +9,8 @@
 #include <linux/types.h>
 #include <linux/notifier.h>
 #include <linux/soc/qcom/llcc-qcom.h>
+#include <linux/soc/qcom/msm_mmrm.h>
+#include <linux/qcom-iommu-util.h>
 #include <linux/errno.h>
 #include <linux/of.h>
 
@@ -18,10 +20,7 @@
 #define DMA_ATTR_DELAYED_UNMAP      (1UL << 17)
 #define DMA_ATTR_QTI_SMMU_PROXY_MAP (1UL << 18)
 
-enum sid_switch_direction {
-	SID_ACQUIRE,
-	SID_RELEASE,
-};
+/* enum sid_switch_direction is provided by OEM <linux/qcom-iommu-util.h>. */
 
 enum subset_part_type {
 	PART_UNKNOWN,
@@ -53,73 +52,10 @@ enum branch_mem_flags {
 	CLKFLAG_PERIPH_OFF_CLEAR,
 };
 
-enum mmrm_cb_type {
-	MMRM_CLIENT_RESOURCE_VALUE_CHANGE = 0x1,
-};
-
-enum mmrm_client_priority {
-	MMRM_CLIENT_PRIOR_HIGH = 0x1,
-	MMRM_CLIENT_PRIOR_LOW  = 0x2
-};
-enum mmrm_client_domain {
-	MMRM_CLIENT_DOMAIN_CAMERA = 0x1,
-	MMRM_CLIENT_DOMAIN_CVP = 0x2,
-	MMRM_CLIENT_DOMAIN_DISPLAY = 0x3,
-	MMRM_CLIENT_DOMAIN_VIDEO = 0x4,
-};
-
-enum mmrm_client_type {
-	MMRM_CLIENT_CLOCK,
-};
-
-enum mmrm_crm_drv_type {
-	MMRM_CRM_SW_DRV,
-	MMRM_CRM_HW_DRV,
-};
-
-struct mmrm_client_data {
-	u32 num_hw_blocks;
-	u32 flags;
-
-	/* CESTA data */
-	enum mmrm_crm_drv_type drv_type;
-	u32 crm_drv_idx;
-	u32 pwr_st;
-};
-
-struct mmrm_res_val_chng {
-	unsigned long old_val;
-	unsigned long new_val;
-};
-
-struct mmrm_client_notifier_data {
-	enum mmrm_cb_type cb_type;
-	union {
-		struct mmrm_res_val_chng val_chng;
-	} cb_data;
-	void *pvt_data;
-};
-
-struct mmrm_clk_client_desc {
-	u32 client_domain;
-	u32 client_id;
-	const char name[MMRM_CLK_CLIENT_NAME_SIZE];
-	struct clk *clk;
-	/* CESTA data */
-	u32 hw_drv_instances;
-	u32 num_pwr_states;
-};
-
-struct mmrm_client_desc {
-	enum mmrm_client_type client_type;
-	union {
-		struct mmrm_clk_client_desc desc;
-	} client_info;
-	enum mmrm_client_priority priority;
-	void *pvt_data;
-	int (*notifier_callback_fn)(
-		void *notifier_data);
-};
+/* MMRM enums, callbacks and structs must match the real OEM 5.10 ABI.
+ * Their definitions are in <linux/soc/qcom/msm_mmrm.h>; do not redeclare
+ * newer incompatible CESTA layouts in an external display module.
+ */
 
 /* Stub definitions for <soc/qcom/crm.h> */
 #ifndef _SOC_QCOM_CRM_H_
