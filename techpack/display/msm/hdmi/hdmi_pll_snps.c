@@ -8,7 +8,7 @@
 #include <linux/log2.h>
 #include <linux/unistd.h>
 #include <linux/gcd.h>
-#include <linux/math.h>
+#include <linux/kernel.h>
 #include <linux/version.h>
 
 #include "hdmi_pll.h"
