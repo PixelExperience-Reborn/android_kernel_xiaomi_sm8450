@@ -8,20 +8,9 @@
 
 #include <linux/string.h>
 #include <linux/kernel.h>
+#include <linux/types.h>
 #include "hfi_packet.h"
 
-#ifndef u8
-typedef uint8_t u8;
-#endif
-#ifndef u16
-typedef uint16_t u16;
-#endif
-#ifndef u32
-typedef uint32_t u32;
-#endif
-#ifndef u64
-typedef uint64_t u64;
-#endif
 
 #define hfi_pk_printf(_str, __fmt, ...) pr_err(_str ": " __fmt, ##__VA_ARGS__)
 
