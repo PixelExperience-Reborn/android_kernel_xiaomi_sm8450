@@ -56,6 +56,7 @@ static int hfi_dbg_parse_payload(void *payload, u32 size)
 	u32 read = 0;
 	u32 *data = (u32 *)payload;
 	u32 prop_count;
+	int i;
 
 	prop_count = *data++;
 	read++;
@@ -67,7 +68,7 @@ static int hfi_dbg_parse_payload(void *payload, u32 size)
 		return ret;
 	}
 
-	for (int i = 0; i < prop_count; i++) {
+	for (i = 0; i < prop_count; i++) {
 		ret = hfi_util_kv_parser_get_next(&kv_parser, last_read, &prop,
 				&value_ptr, &max_words);
 		if (ret) {
