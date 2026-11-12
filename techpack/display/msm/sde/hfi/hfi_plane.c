@@ -120,8 +120,9 @@ static u32 _hfi_plane_scale_alpha(struct sde_mdss_cfg *catalog, u32 prop_val)
 static u32 hfi_rot_lookup(u32 drm_rot)
 {
 	u32 support_rot = 0;
+	int i;
 
-	for (int i = 0; i < ARRAY_SIZE(dpu_rot_map); i++) {
+	for (i = 0; i < ARRAY_SIZE(dpu_rot_map); i++) {
 		if (dpu_rot_map[i].drm_rot & drm_rot)
 			support_rot |= dpu_rot_map[i].hfi_rot;
 	}
