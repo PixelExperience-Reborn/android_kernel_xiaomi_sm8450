@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Compile only: these objects are not modules installed on the device.
 ccflags-y += -I$(DISPLAY_ROOT)/msm
+# Match the driver's search path for nested <hfi_defs_common.h> includes.
+ccflags-y += -I$(DISPLAY_ROOT)/msm/hfi
 ccflags-y += -include $(DISPLAY_ROOT)/config/gki_waipiodispconf.h
 ccflags-y += -Werror=typedef-redefinition
 
