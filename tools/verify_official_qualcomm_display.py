@@ -15,7 +15,7 @@ DISPLAY = ROOT / "techpack/display"
 EXPECTED_BLOBS = {
     "Kbuild": "cd50990e1abfbbbf37862c1fb5b231c1cc07571b",
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
-    "msm/Kbuild": "4a88971a4301d350b3e3b2e11c27292631b976f0",
+    "msm/Kbuild": "9ce8af860bb02d67d68d8a4566ceafb77e221efc",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
     "msm/qcom_display_internal.h": "574d1c903e6c04edfc247f76dd829c25f92c5e66",
     "msm/sde_hdcp_2x.c": "9a497ce0370a33a02822cff6ec06e33cc209c9ca",
@@ -70,7 +70,10 @@ def verify_build_profiles():
         forced_headers = re.findall(r"-include\s+(\S+)", actual["LINUX_INC"])
         check(forced_headers == [str(DISPLAY / "config" / header)],
               f"{name}: conflicting forced configuration headers: {forced_headers}")
-        objects = set(actual["msm_drm-y"].split())
+        selected_objects = actual["msm_drm-y"].split()
+        check(len(selected_objects) == len(set(selected_objects)),
+              f"{name}: duplicate object linked into msm_drm.o")
+        objects = set(selected_objects)
         check({"sde/sde_hw_dsc.o", "sde/sde_hw_dsc_1_2.o", "sde_dsc_helper.o",
                "dsi/dsi_panel.o"} <= objects,
               f"{name}: native SDE/DSI/DSC objects were lost")
@@ -139,6 +142,12 @@ def main():
     panel_src = (DISPLAY / "msm/dsi/dsi_panel.c").read_text()
     qcom_cfg = (DISPLAY / "config/gki_waipiodisp.conf").read_text()
     kbuild = (DISPLAY / "msm/Kbuild").read_text()
+    # Duplicate object references create repeated ELF definitions at ld -r.
+    # Check all recipes, including the optional rotator recipe, not only WAIPIO.
+    listed_objects = re.findall(r"(?:\.\./)?(?:[\w-]+/)*[\w-]+\.o\b", kbuild)
+    duplicates = sorted({obj for obj in listed_objects
+                         if listed_objects.count(obj) > 1})
+    check(not duplicates, f"Display Kbuild duplicates ELF objects: {duplicates}")
     arch = (ROOT / "arch/arm64/configs/vendor/mondrian_GKI.config").read_text()
     gki = (ROOT / "arch/arm64/configs/gki_defconfig").read_text()
 
