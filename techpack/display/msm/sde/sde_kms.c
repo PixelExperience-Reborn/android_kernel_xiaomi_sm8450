@@ -2683,7 +2683,7 @@ static int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *de
 		return -EINVAL;
 	}
 
-#if CONFIG_MDSS_HFI
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	rc = hfi_msm_drv_hfi_init(priv);
 	if (rc) {
 		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);

@@ -929,7 +929,7 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	ddev->dev_private = priv;
 	priv->dev = ddev;
 
-#if CONFIG_MDSS_HFI
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	ret = hfi_msm_drv_init(ddev);
 	if (ret)
 		goto hfi_alloc_fail;

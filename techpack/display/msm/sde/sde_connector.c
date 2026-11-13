@@ -4591,7 +4591,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			"conn%u",
 			c_conn->base.base.id);
 
-#if CONFIG_MDSS_HFI
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = hfi_connector_init(connector_type, c_conn);
 		if (rc)
