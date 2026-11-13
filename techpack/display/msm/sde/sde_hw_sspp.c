@@ -1383,7 +1383,9 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		if (c->cap->sblk->ucsc_igc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_igc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_igcv1_1;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 			c->ops.setup_ucsc_igc[MSM_DISP_OP_HFI] = hfi_setup_ucsc_igcv1;
+#endif /* CONFIG_MDSS_HFI */
 		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version))
 			c->ops.setup_ucsc_igc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_igcv1;
@@ -1393,7 +1395,9 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		if (c->cap->sblk->ucsc_gc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_gc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_gcv1_1;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 			c->ops.setup_ucsc_gc[MSM_DISP_OP_HFI] = hfi_setup_ucsc_gcv1;
+#endif /* CONFIG_MDSS_HFI */
 		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version))
 			c->ops.setup_ucsc_gc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_gcv1;
@@ -1403,7 +1407,9 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		if (c->cap->sblk->ucsc_csc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_csc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_cscv1_1;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 			c->ops.setup_ucsc_csc[MSM_DISP_OP_HFI] = hfi_setup_ucsc_cscv1;
+#endif /* CONFIG_MDSS_HFI */
 		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version))
 			c->ops.setup_ucsc_csc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_cscv1;
@@ -1413,7 +1419,9 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		if (c->cap->sblk->ucsc_unmult_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HWIO] = sde_setup_ucsc_unmultv1_1;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HFI] = hfi_setup_ucsc_unmultv1;
+#endif /* CONFIG_MDSS_HFI */
 		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version))
 			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HWIO] = sde_setup_ucsc_unmultv1;
@@ -1422,7 +1430,9 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 	if (test_bit(SDE_SSPP_UCSC_ALPHA_DITHER, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version)) {
 		c->ops.setup_ucsc_alpha_dither[MSM_DISP_OP_HWIO] = sde_setup_ucsc_alpha_ditherv1;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		c->ops.setup_ucsc_alpha_dither[MSM_DISP_OP_HFI] = hfi_setup_ucsc_alpha_ditherv1;
+#endif /* CONFIG_MDSS_HFI */
 	}
 }
 
