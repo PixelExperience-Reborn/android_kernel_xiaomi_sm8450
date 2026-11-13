@@ -3354,7 +3354,9 @@ void sde_plane_flush(struct drm_plane *plane)
 	priv = plane->dev->dev_private;
 	disp_op = sde_plane_get_disp_op(&psde->base);
 	drm_crtc = plane->state->crtc;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
+#endif
 
 	/*
 	 * These updates have to be done immediately before the plane flush
@@ -3373,6 +3375,7 @@ void sde_plane_flush(struct drm_plane *plane)
 					pstate->csc_ptr, priv->disp_op);
 	}
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (disp_op == MSM_DISP_OP_HFI) {
 		color_props = psde->pipe_hw->prop_helper;
 		cmd_buf = _sde_plane_get_cmd_buf(plane);
@@ -3394,6 +3397,7 @@ void sde_plane_flush(struct drm_plane *plane)
 
 		hfi_util_u32_prop_helper_reset(color_props);
 	}
+#endif /* CONFIG_MDSS_HFI */
 
 	/* flag h/w flush complete */
 	if (plane->state)
@@ -3978,6 +3982,7 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		return;
 	}
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (IS_DISP_OP_HFI(disp_op)) {
 		cmd_buf = _sde_plane_get_cmd_buf(plane);
 		if (!cmd_buf)
@@ -3986,6 +3991,7 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		if (psde->hfi_plane)
 			hfi_util_u32_prop_helper_reset(psde->hfi_plane->color_props);
 	}
+#endif /* CONFIG_MDSS_HFI */
 
 	msm_fmt = msm_framebuffer_format(fb);
 	if (!msm_fmt) {
@@ -4038,6 +4044,7 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 
 	/* clear dirty */
 	pstate->dirty = 0x0;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (IS_DISP_OP_HFI(disp_op)) {
 		if (!psde->hfi_plane)
 			goto end;
@@ -4080,6 +4087,7 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 			hfi_util_u32_prop_helper_reset(psde->hfi_plane->color_props);
 	}
 end:
+#endif /* CONFIG_MDSS_HFI */
 	return;
 }
 
