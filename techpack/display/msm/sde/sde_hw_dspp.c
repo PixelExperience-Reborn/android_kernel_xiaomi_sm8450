@@ -231,7 +231,9 @@ static void dspp_dither(struct sde_hw_dspp *c)
 {
 	if (c->cap->sblk->dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		c->ops.setup_pa_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_dither_v1_7;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		c->ops.setup_pa_dither[MSM_DISP_OP_HFI] = hfi_setup_dspp_pa_dither_v1_7;
+#endif /* CONFIG_MDSS_HFI */
 	}
 }
 
@@ -432,7 +434,9 @@ static void dspp_spr(struct sde_hw_dspp *c)
 		c->ops.setup_spr_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_spr_dither_v1_7;
 	else if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
 		c->ops.setup_spr_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_spr_dither_v2;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		c->ops.setup_spr_dither[MSM_DISP_OP_HFI] = hfi_setup_dspp_spr_dither_v2;
+#endif /* CONFIG_MDSS_HFI */
 	}
 }
 
@@ -502,8 +506,10 @@ static void dspp_demura(struct sde_hw_dspp *c)
 					reg_dmav1_setup_demura_cfg0_param2_v4;
 
 			c->ops.setup_demura_cfg[MSM_DISP_OP_HFI] = reg_dmav1_setup_demurav4;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 			c->ops.setup_demura_backlight_cfg[MSM_DISP_OP_HFI] =
 					hfi_setup_demura_backlight_cfg_v4;
+#endif /* CONFIG_MDSS_HFI */
 			c->ops.setup_demura_cfg0_param2[MSM_DISP_OP_HFI] =
 					reg_dmav1_setup_demura_cfg0_param2_v4;
 		} else {
