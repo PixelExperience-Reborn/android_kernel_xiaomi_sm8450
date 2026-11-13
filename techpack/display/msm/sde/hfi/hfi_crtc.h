@@ -49,9 +49,8 @@ struct hfi_crtc_state {
  * @sde_crtc: Pointer to sde crtc struct
  * @enc_mask: input encoder mask to cache
  */
-void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask);
-
 #if IS_ENABLED(CONFIG_MDSS_HFI)
+void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask);
 /**
  * hfi_crtc_init - create a new hfi crtc object
  * @sde_crtc: Pointer to sde crtc struct
@@ -83,35 +82,35 @@ int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc);
 int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc);
 
 #else
-int hfi_crtc_init(struct sde_crtc *sde_crtc);
-int hfi_crtc_init(struct sde_crtc *sde_crtc)
+/*
+ * Non-HFI WAIPIO uses the existing fallback behavior. These functions must
+ * not have external linkage: SDE includes this header in multiple objects.
+ */
+static inline int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
 	return -HFI_ERROR;
 }
 
-u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
-u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
+static inline u32 hfi_crtc_get_display_id(struct drm_crtc *crtc,
+		struct drm_crtc_state *crtc_state)
 {
 	return U32_MAX;
 }
 
-void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask);
-void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
+static inline void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc,
+		u32 enc_mask)
 {
 }
 
-int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc);
-int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc)
-{
-	return 0;
-}
-
-int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc);
-int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc)
+static inline int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc)
 {
 	return 0;
 }
 
+static inline int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc)
+{
+	return 0;
+}
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 
 #endif  // _HFI_CRTC_H_
