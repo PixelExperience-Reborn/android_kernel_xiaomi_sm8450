@@ -5266,6 +5266,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 
 
 	if (sde_kms_is_cp_operation_allowed(sde_kms)) {
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		if (IS_DISP_OP_HFI(disp_op)) {
 			cmd_buf = _sde_crtc_get_cmd_buf(crtc);
 			if (!cmd_buf) {
@@ -5275,9 +5276,11 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			if (sde_crtc->hfi_crtc)
 				hfi_util_u32_prop_helper_reset(sde_crtc->hfi_crtc->color_props);
 		}
+#endif /* CONFIG_MDSS_HFI */
 
 		sde_cp_crtc_apply_properties(crtc);
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		if (IS_DISP_OP_HFI(disp_op)) {
 			if (!sde_crtc->hfi_crtc)
 				goto skip_cp;
@@ -5310,6 +5313,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 				goto skip_cp;
 			}
 		}
+#endif /* CONFIG_MDSS_HFI */
 	}
 
 skip_cp:
