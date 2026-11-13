@@ -25,7 +25,7 @@ EXPECTED_BLOBS = {
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",
     "msm/dsi/dsi_drm.c": "3c52f593cbae74edb64f65cadece113f5b8825e8",
-    "msm/dsi/dsi_display.c": "194fae03b87182250b4b9af7cd1493f4235d6c20",
+    "msm/dsi/dsi_display.c": "30834f3f1cdc7e64fc4d1273837c96d8f6286537",
 }
 OEM_GENERIC_MAKEFILE_SHA = "340682cd0f320d83921799eaff3f716c7e08fc1a"
 
@@ -164,6 +164,23 @@ def main():
           "Qualcomm SDE not configured for external module build")
     check("dsi_panel_parse" in panel_src,
           "Qualcomm DSI panel parsing not found")
+    hdcp = (DISPLAY / "hdcp/msm_hdcp.c").read_text()
+    check("void __init msm_hdcp_register(void)" in hdcp and
+          "void __exit msm_hdcp_unregister(void)" in hdcp and
+          "static void __init msm_hdcp_register" not in hdcp and
+          "static void __exit msm_hdcp_unregister" not in hdcp,
+          "real HDCP platform-driver entry points must be globally linkable")
+    dsi_src = (DISPLAY / "msm/dsi/dsi_display.c").read_text()
+    dsi_hfi_src = (DISPLAY / "msm/dsi/hfi/dsi_display_hfi.c").read_text()
+    sde_kms = (DISPLAY / "msm/sde/sde_kms.c").read_text()
+    check("static void dsi_display_setup_ops(" in dsi_src and
+          "display->display_ops.display_prepare[MSM_DISP_OP_HWIO]" in dsi_src and
+          "#if IS_ENABLED(CONFIG_MDSS_HFI)" in dsi_src and
+          "void dsi_display_hfi_setup_ops(" in dsi_hfi_src,
+          "standard DSI HWIO callbacks must not depend on optional HFI objects")
+    check("#if IS_ENABLED(CONFIG_MDSS_HFI)\nstatic int sde_kms_setup_hfi(" in sde_kms and
+          "#if IS_ENABLED(CONFIG_MDSS_HFI)\nstatic int _sde_kms_send_reg_dma_last_cmd_hfi(" in sde_kms,
+          "optional SDE HFI initialization must not link into the non-HFI WAIPIO profile")
     check((DISPLAY / "LICENSE.txt").is_file() and
           (DISPLAY / "NOTICE").is_file(),
           "Qualcomm source license/NOTICE missing")
