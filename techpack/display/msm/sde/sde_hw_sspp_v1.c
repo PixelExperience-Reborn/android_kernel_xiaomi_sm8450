@@ -1152,7 +1152,9 @@ void setup_layer_ops_v1(struct sde_hw_pipe *c,
 	if (test_bit(SDE_SSPP_CSC, &features) ||
 		test_bit(SDE_SSPP_CSC_10BIT, &features)) {
 		c->ops.setup_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_csc;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		c->ops.setup_csc[MSM_DISP_OP_HFI] = hfi_sspp_setup_csc;
+#endif /* CONFIG_MDSS_HFI */
 	}
 	if (test_bit(SDE_SSPP_DGM_CSC, &features))
 		c->ops.setup_dgm_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_dgm_csc;
