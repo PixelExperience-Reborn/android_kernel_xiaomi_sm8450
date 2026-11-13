@@ -77,7 +77,7 @@ def verify_build_profiles():
         check({"sde/sde_hw_dsc.o", "sde/sde_hw_dsc_1_2.o", "sde_dsc_helper.o",
                "dsi/dsi_panel.o"} <= objects,
               f"{name}: native SDE/DSI/DSC objects were lost")
-        if actual["CONFIG_DRM_MSM_DP"] == "y":
+        if actual.get("CONFIG_DRM_MSM_DP") == "y":
             check("dp/dp_lttpr_compat.o" in objects,
                   f"{name}: real OEM 5.10 DP LTTPR AUX backport was not linked")
         else:
