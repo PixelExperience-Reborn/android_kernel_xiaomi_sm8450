@@ -66,16 +66,18 @@ void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
  */
 int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
 #else
-struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
-		u32 cmd_buf_type);
-struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
-		u32 cmd_buf_type)
+/*
+ * The WAIPIO profile does not select HFI. Keep the existing non-HFI
+ * behavior local to each translation unit rather than exporting duplicate
+ * global symbols from every SDE object that includes this header.
+ */
+static inline struct hfi_cmdbuf_t *
+hfi_connector_get_cmd_buf(struct drm_connector *drm_conn, u32 cmd_buf_type)
 {
 	return NULL;
 }
 
-int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
-int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
+static inline int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
 {
 	return 0;
 }
