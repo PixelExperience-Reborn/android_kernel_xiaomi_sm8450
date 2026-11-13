@@ -5,6 +5,7 @@
  */
 
 #include "dp_panel.h"
+#include "dp_lttpr_compat.h"
 #include <linux/unistd.h>
 #include <drm/drm_fixed.h>
 #include "dp_debug.h"
@@ -711,9 +712,11 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 	print_hex_dump_debug("[drm-dp] SINK DPCD: ",
 		DUMP_PREFIX_NONE, 8, 1, dp_panel->dpcd, rlen, false);
 
-	/* If any LTTPRs in the path, read the LTTPR caps and store in panel struct */
-	if (drm_dp_read_lttpr_common_caps(drm_aux, dp_panel->dpcd, dp_panel->lttpr_common_caps))
-		DP_WARN("dpcd lttpr read fail:%d\n", rc);
+	/* Read the real DP AUX LTTPR common capability register block. */
+	rlen = pe_waipio_dp_read_lttpr_common_caps(drm_aux, dp_panel->dpcd,
+			dp_panel->lttpr_common_caps);
+	if (rlen)
+		DP_WARN("dpcd lttpr read fail:%d\n", rlen);
 
 	DP_DEBUG("lttpr caps - rev:0x%x, max_lr: 0x%x, phy_rp_cnt: 0x%x, phy_rp_mode: 0x%x",
 		dp_panel->lttpr_common_caps[0],	dp_panel->lttpr_common_caps[1],
