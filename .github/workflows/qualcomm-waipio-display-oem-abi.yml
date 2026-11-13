@@ -1,8 +1,10 @@
 name: Qualify official Qualcomm WAIPIO display against PE-Reborn Xiaomi OEM kernel
 
 on:
-  push:
-    branches: [bringup/a17-mondrian-qualcomm-display-trial-20261109]
+  # Qualify the actual draft PR head. Avoid unobservable push-only runs
+  # and duplicate full OEM builds for the same commit.
+  pull_request:
+    branches: [bringup/a17-mondrian-xiaomi-oem-base-20261109]
     paths:
       - '.github/workflows/qualcomm-waipio-display-oem-abi.yml'
       - 'techpack/display/**'
