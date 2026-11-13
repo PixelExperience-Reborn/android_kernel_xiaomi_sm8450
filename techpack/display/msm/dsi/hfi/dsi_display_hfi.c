@@ -299,7 +299,7 @@ end:
 	return rc;
 }
 
-void dsi_display_setup_ops(struct dsi_display *display)
+void dsi_display_hfi_setup_ops(struct dsi_display *display)
 {
 	display->display_ops.display_prepare[MSM_DISP_OP_HFI] = dsi_display_hfi_prepare;
 	display->display_ops.display_enable[MSM_DISP_OP_HFI] = dsi_display_hfi_enable;
@@ -310,12 +310,6 @@ void dsi_display_setup_ops(struct dsi_display *display)
 	display->display_ops.misr_setup[MSM_DISP_OP_HFI] = dsi_hfi_misr_setup;
 	display->display_ops.misr_read[MSM_DISP_OP_HFI] = dsi_hfi_misr_read;
 
-	display->display_ops.display_prepare[MSM_DISP_OP_HWIO] = dsi_display_prepare;
-	display->display_ops.display_enable[MSM_DISP_OP_HWIO] = dsi_display_enable;
-	display->display_ops.post_enable[MSM_DISP_OP_HWIO] = dsi_display_post_enable;
-	display->display_ops.pre_disable[MSM_DISP_OP_HWIO] = dsi_display_pre_disable;
-	display->display_ops.display_disable[MSM_DISP_OP_HWIO] = dsi_display_disable;
-	display->display_ops.display_unprepare[MSM_DISP_OP_HWIO] = dsi_display_unprepare;
 }
 
 static int dsi_hfi_copy_and_pad_cmd(const struct mipi_dsi_packet *packet,
