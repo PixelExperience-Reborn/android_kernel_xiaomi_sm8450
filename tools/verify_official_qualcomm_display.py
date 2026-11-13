@@ -15,7 +15,7 @@ DISPLAY = ROOT / "techpack/display"
 EXPECTED_BLOBS = {
     "Kbuild": "cd50990e1abfbbbf37862c1fb5b231c1cc07571b",
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
-    "msm/Kbuild": "9ce8af860bb02d67d68d8a4566ceafb77e221efc",
+    "msm/Kbuild": "ec664f1b1b5c575a76981e3df1b010c95399cdd4",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
     "msm/qcom_display_internal.h": "574d1c903e6c04edfc247f76dd829c25f92c5e66",
     "msm/sde_hdcp_2x.c": "9a497ce0370a33a02822cff6ec06e33cc209c9ca",
@@ -77,6 +77,8 @@ def verify_build_profiles():
         check({"sde/sde_hw_dsc.o", "sde/sde_hw_dsc_1_2.o", "sde_dsc_helper.o",
                "dsi/dsi_panel.o"} <= objects,
               f"{name}: native SDE/DSI/DSC objects were lost")
+        check("dp/dp_lttpr_compat.o" in objects,
+              f"{name}: real OEM 5.10 DP LTTPR AUX backport was not linked")
         if waipio == "y":
             check(not actual["CONFIG_MDSS_HFI"] and not actual["CONFIG_DRM_MSM_HDMI"],
                   f"{name}: generic HDMI/HFI options leaked into the OEM profile")
@@ -164,6 +166,23 @@ def main():
           "Qualcomm SDE not configured for external module build")
     check("dsi_panel_parse" in panel_src,
           "Qualcomm DSI panel parsing not found")
+    dp_lttpr = (DISPLAY / "msm/dp/dp_lttpr_compat.c").read_text()
+    dp_panel = (DISPLAY / "msm/dp/dp_panel.c").read_text()
+    dp_display = (DISPLAY / "msm/dp/dp_display.c").read_text()
+    check("drm_dp_dpcd_read(aux," in dp_lttpr and
+          "DP_LT_TUNABLE_PHY_REPEATER_FIELD_DATA_STRUCTURE_REV +" in dp_lttpr and
+          "hweight8(count)" in dp_lttpr and
+          "ret != block_size" in dp_lttpr,
+          "LTTPR OEM 5.10 compatibility must perform real DPCD/AUX I/O")
+    check("pe_waipio_dp_read_lttpr_common_caps(" in dp_panel and
+          "pe_waipio_dp_lttpr_count(" in dp_display and
+          "drm_dp_lttpr_count(" not in dp_display and
+          "drm_dp_read_lttpr_common_caps(" not in dp_panel,
+          "DP consumers must use the reviewed local Linux 5.10 implementation")
+    for path in ("sde_hw_dspp.c", "sde_hw_sspp.c", "sde_hw_sspp_v1.c"):
+        source = (DISPLAY / "msm/sde" / path).read_text()
+        check("#if IS_ENABLED(CONFIG_MDSS_HFI)" in source,
+              f"{path}: HFI-only color callback must not link in WAIPIO HWIO")
     hdcp = (DISPLAY / "hdcp/msm_hdcp.c").read_text()
     check("void __init msm_hdcp_register(void)" in hdcp and
           "void __exit msm_hdcp_unregister(void)" in hdcp and
