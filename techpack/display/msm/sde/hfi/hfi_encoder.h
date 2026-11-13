@@ -57,8 +57,8 @@ struct hfi_encoder {
  */
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc);
 #else
-int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc);
-int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
+static inline int hfi_encoder_init(struct drm_device *dev,
+		struct sde_encoder_virt *sde_enc)
 {
 	return -HFI_ERROR;
 }
