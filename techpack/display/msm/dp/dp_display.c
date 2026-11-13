@@ -30,6 +30,7 @@
 #include "dp_aux.h"
 #include "dp_link.h"
 #include "dp_panel.h"
+#include "dp_lttpr_compat.h"
 #include "dp_ctrl.h"
 #include "dp_audio.h"
 #include "dp_display.h"
@@ -1417,7 +1418,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	 * (e.g. apple cable) misbehave if the operating mode isn't set explicitly. Hence set the
 	 * transparent mode if at least 1 LTTPR is present in the path.
 	 */
-	if (drm_dp_lttpr_count(dp->panel->lttpr_common_caps))
+	if (pe_waipio_dp_lttpr_count(dp->panel->lttpr_common_caps) > 0)
 		dp->panel->set_lttpr_mode(dp->panel, true);
 
 	dp->link->process_request(dp->link);
