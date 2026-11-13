@@ -3727,9 +3727,11 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
 		rc = dsi_hfi_host_transfer_sub(host, &cmd);
 	else
+#endif
 		rc = dsi_host_transfer_sub(host, &cmd, false);
 
 	return rc;
@@ -6228,6 +6230,25 @@ static int dsi_display_get_display_node_count(struct dsi_display *display)
  * @data:       Pointer to private data
  * Returns:     Zero on success
  */
+/*
+ * Native WAIPIO/SDE DSI operations must not depend on the optional HFI
+ * transport. Install HWIO callbacks regardless of CONFIG_MDSS_HFI, and
+ * install HFI callbacks only when the corresponding driver is linked.
+ */
+static void dsi_display_setup_ops(struct dsi_display *display)
+{
+	display->display_ops.display_prepare[MSM_DISP_OP_HWIO] = dsi_display_prepare;
+	display->display_ops.display_enable[MSM_DISP_OP_HWIO] = dsi_display_enable;
+	display->display_ops.post_enable[MSM_DISP_OP_HWIO] = dsi_display_post_enable;
+	display->display_ops.pre_disable[MSM_DISP_OP_HWIO] = dsi_display_pre_disable;
+	display->display_ops.display_disable[MSM_DISP_OP_HWIO] = dsi_display_disable;
+	display->display_ops.display_unprepare[MSM_DISP_OP_HWIO] = dsi_display_unprepare;
+
+#if IS_ENABLED(CONFIG_MDSS_HFI)
+	dsi_display_hfi_setup_ops(display);
+#endif
+}
+
 static int dsi_display_bind(struct device *dev,
 		struct device *master,
 		void *data)
@@ -10606,6 +10627,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 int dsi_display_ctl_init(void *display, void *hfi_priv)
 {
 
@@ -10658,6 +10680,8 @@ int dsi_display_ctl_post_transition(void *display)
 
 	return 0;
 }
+
+#endif /* CONFIG_MDSS_HFI */
 
 void __init dsi_display_register(void)
 {
