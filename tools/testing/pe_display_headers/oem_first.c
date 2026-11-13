@@ -8,3 +8,5 @@
 #include <soc/qcom/secure_buffer.h>
 #include "qcom_display_internal.h"
 #include "hfi/hfi_defs_common.h"
+#include "hfi/hfi_pack_unpack_common.h"
+#include "hfi/hfi_defs_display_color.h"

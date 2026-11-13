@@ -7,3 +7,5 @@
 #include <soc/qcom/of_common.h>
 #include <soc/qcom/secure_buffer.h>
 #include "hfi/hfi_defs_common.h"
+#include "hfi/hfi_pack_unpack_common.h"
+#include "hfi/hfi_defs_display_color.h"

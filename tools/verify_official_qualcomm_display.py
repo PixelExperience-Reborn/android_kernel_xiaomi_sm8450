@@ -5,6 +5,7 @@ This is a source/layout validation, not a successful msm_drm.ko compile
 or Android 17 HWC / panel compatibility certificate.
 """
 import hashlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -14,7 +15,7 @@ DISPLAY = ROOT / "techpack/display"
 EXPECTED_BLOBS = {
     "Kbuild": "cd50990e1abfbbbf37862c1fb5b231c1cc07571b",
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
-    "msm/Kbuild": "26744bed61323b4bd7267b11da6577867ff58c65",
+    "msm/Kbuild": "4a88971a4301d350b3e3b2e11c27292631b976f0",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
     "msm/qcom_display_internal.h": "574d1c903e6c04edfc247f76dd829c25f92c5e66",
     "msm/sde_hdcp_2x.c": "9a497ce0370a33a02822cff6ec06e33cc209c9ca",
@@ -23,6 +24,8 @@ EXPECTED_BLOBS = {
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",
+    "msm/dsi/dsi_drm.c": "3c52f593cbae74edb64f65cadece113f5b8825e8",
+    "msm/dsi/dsi_display.c": "194fae03b87182250b4b9af7cd1493f4235d6c20",
 }
 OEM_GENERIC_MAKEFILE_SHA = "340682cd0f320d83921799eaff3f716c7e08fc1a"
 
@@ -34,6 +37,47 @@ def hash_blob(content):
     return hashlib.sha1(
         b"blob " + str(len(content)).encode("ascii") + bytes([0]) + content
     ).hexdigest()
+
+def verify_build_profiles():
+    """Evaluate the real Kbuild: ARCH_QCOM must not override OEM WAIPIO."""
+    for name, waipio, vm, config, header in (
+        ("WAIPIO", "y", "n", "gki_waipiodisp.conf", "gki_waipiodispconf.h"),
+        ("WAIPIO TUI", "y", "y", "gki_waipiodisptui.conf", "gki_waipiodisptuiconf.h"),
+        ("generic QCOM", "n", "n", "qcomdisp.mk", "qcomdispconf.h"),
+    ):
+        expected = dict(re.findall(
+            r"^(?:export\s+)?(CONFIG_\w+)\s*:?=\s*(\w+)\s*$",
+            (DISPLAY / "config" / config).read_text(), re.MULTILINE))
+        keys = sorted(set(expected) | {
+            "CONFIG_MDSS_HFI", "CONFIG_DRM_MSM_HDMI", "LINUX_INC", "msm_drm-y"})
+        script = (
+            f"DISPLAY_ROOT := {DISPLAY}\n"
+            "CONFIG_ARCH_QCOM := y\n"
+            f"CONFIG_ARCH_WAIPIO := {waipio}\n"
+            f"CONFIG_ARCH_CAPE := {waipio}\n"
+            f"CONFIG_ARCH_QTI_VM := {vm}\n"
+            "include $(DISPLAY_ROOT)/msm/Kbuild\n"
+            + "".join(f"$(info PE_PROFILE:{key}=$({key}))\n" for key in keys)
+            + ".PHONY: profile\nprofile: ; @:\n")
+        result = subprocess.run(
+            ["make", "-rR", "--no-print-directory", "-f", "-", "profile"],
+            input=script, text=True, capture_output=True, check=True, cwd=ROOT)
+        actual = dict(line.removeprefix("PE_PROFILE:").split("=", 1)
+                      for line in result.stdout.splitlines()
+                      if line.startswith("PE_PROFILE:"))
+        check(all(actual.get(key) == value for key, value in expected.items()),
+              f"{name}: Kbuild changed an official profile option")
+        forced_headers = re.findall(r"-include\s+(\S+)", actual["LINUX_INC"])
+        check(forced_headers == [str(DISPLAY / "config" / header)],
+              f"{name}: conflicting forced configuration headers: {forced_headers}")
+        objects = set(actual["msm_drm-y"].split())
+        check({"sde/sde_hw_dsc.o", "sde/sde_hw_dsc_1_2.o", "sde_dsc_helper.o",
+               "dsi/dsi_panel.o"} <= objects,
+              f"{name}: native SDE/DSI/DSC objects were lost")
+        if waipio == "y":
+            check(not actual["CONFIG_MDSS_HFI"] and not actual["CONFIG_DRM_MSM_HDMI"],
+                  f"{name}: generic HDMI/HFI options leaked into the OEM profile")
+    print("[PASS] evaluated WAIPIO/TUI and generic Kbuild profiles; native DSC retained")
 
 def main():
     tracked = subprocess.check_output(
@@ -119,6 +163,8 @@ def main():
           "Qualcomm source commit not attributed")
     check(not (ROOT / "techpack/mm-drivers").exists(),
           "unexpected unreviewed multimedia dependency imported")
+
+    verify_build_profiles()
 
     print(f"[PASS] {imported_count} official Qualcomm display-source paths")
     print("[PASS] WAIPIO SDE/DSI source pinned with reviewed Linux 5.10/LLVM23 adjustments")

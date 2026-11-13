@@ -558,15 +558,18 @@ error:
 static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 {
 	int rc = 0, cnt = 0;
-	struct dsi_display_ctrl *display_ctrl = &display->ctrl[0];
+	struct dsi_display_ctrl *display_ctrl;
 
 	display->tx_cmd_buf = msm_gem_new(display->drm_dev,
 			SZ_4K,
 			MSM_BO_UNCACHED);
 
-	if ((display->tx_cmd_buf) == NULL) {
-		DSI_ERR("Failed to allocate cmd tx buf memory\n");
-		rc = -ENOMEM;
+	if (IS_ERR_OR_NULL(display->tx_cmd_buf)) {
+		rc = PTR_ERR(display->tx_cmd_buf);
+		if (!rc)
+			rc = -ENOMEM;
+		display->tx_cmd_buf = NULL;
+		DSI_ERR("Failed to allocate cmd tx buf memory, rc=%d\n", rc);
 		goto error;
 	}
 
@@ -625,15 +628,12 @@ free_aspace_cb:
 	msm_gem_address_space_unregister_cb(display->aspace,
 			dsi_display_aspace_cb_locked, display);
 free_gem:
-#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
-	if (display->ctrl_count && display_ctrl->ctrl)
-		mutex_lock(&display_ctrl->ctrl->ctrl_lock);
-#endif
-	msm_gem_free_object(display->tx_cmd_buf);
-#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
-	if (display->ctrl_count && display_ctrl->ctrl)
-		mutex_unlock(&display_ctrl->ctrl->ctrl_lock);
-#endif
+	/* No controller owns this object until all allocation steps succeed. */
+	drm_gem_object_put(display->tx_cmd_buf);
+	display->tx_cmd_buf = NULL;
+	display->vaddr = NULL;
+	display->cmd_buffer_iova = 0;
+	display->cmd_buffer_size = 0;
 error:
 	return rc;
 }
@@ -3512,7 +3512,9 @@ static int dsi_panel_update_from_mipi_dsi_device(struct dsi_panel *panel,
 	panel->mipi_device.lanes      = dsi->lanes;
 	panel->mipi_device.format     = dsi->format;
 	panel->mipi_device.mode_flags = dsi->mode_flags;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 	panel->mipi_device.dsc        = dsi->dsc;
+#endif
 	panel->mipi_device.host       = dsi->host;
 
 	DSI_INFO("[%s] applying mipi_dsi_device config "
@@ -8340,7 +8342,11 @@ int dsi_display_setup_mode_from_drm(struct dsi_display *display,
 	/* Read widebus support from HW before DSC block which uses it. */
 	priv_info->widebus_support = display->ctrl[0].ctrl->hw.widebus_support;
 
-	/* DSC: copy geometry from the drm panel's mipi_dsi_device::dsc. */
+	/*
+	 * DRM-panel DSC transport was added to mipi_dsi_device in Linux 6.1.
+	 * The OEM DT-panel path uses dsi_panel_parse_dsc_params() independently.
+	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 	if (dsi->dsc) {
 		mode->timing.dsc_enabled = true;
 		priv_info->dsc_enabled   = true;
@@ -8399,7 +8405,9 @@ int dsi_display_setup_mode_from_drm(struct dsi_display *display,
 		priv_info->pclk_scale.numer = dsi->dsc->bits_per_pixel >> 4;
 		priv_info->pclk_scale.denom = 3 * dsi->dsc->bits_per_component;
 		mode->timing.pclk_scale = priv_info->pclk_scale;
-	} else {
+	} else
+#endif
+	{
 		/* Non-DSC: single LM, single INTF, no compression. */
 		/* TODO:remove the hardcoded topology, derive dynamically based on DPU catalog.*/
 		priv_info->topology.num_lm   = 1;

@@ -94,8 +94,11 @@ ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_AR
 endif
 
 ifeq ($(CONFIG_ARCH_QCOM), y)
+# OEM WAIPIO also sets ARCH_QCOM; its SoC profile must remain authoritative.
+ifneq ($(CONFIG_ARCH_WAIPIO), y)
        include $(DISPLAY_ROOT)/config/qcomdisp.mk
        LINUX_INC += -include $(DISPLAY_ROOT)/config/qcomdispconf.h
+endif
 endif
 
 ifeq ($(ENABLE_BUILD_PATH), y)

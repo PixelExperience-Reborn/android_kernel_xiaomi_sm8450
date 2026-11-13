@@ -229,6 +229,7 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	if (bridge->encoder->crtc->state->active_changed)
 		atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 	/*
 	 * For DRM panels with DSC, populate RC tables now that
 	 * pic_width/pic_height were set during mode enumeration.
@@ -246,6 +247,7 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 			}
 		}
 	}
+#endif
 
 	/* By this point mode should have been validated through mode_fixup */
 	rc = dsi_display_set_mode(c_bridge->display,
@@ -1395,10 +1397,12 @@ static int dsi_display_get_drm_modes(struct dsi_display *display,
 	display->panel->phy_props.panel_height_mm = connector->display_info.height_mm;
 
 	/* record pic dimensions for DSC; RC tables populated in dsi_bridge_pre_enable */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 	if (drm_mode && dsi->dsc) {
 		dsi->dsc->pic_width  = drm_mode->hdisplay;
 		dsi->dsc->pic_height = drm_mode->vdisplay;
 	}
+#endif
 
 	if (drm_mode) {
 		rc = dsi_display_setup_mode_from_drm(display, drm_mode, dsi);
