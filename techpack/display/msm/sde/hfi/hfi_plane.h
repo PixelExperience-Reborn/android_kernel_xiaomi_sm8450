@@ -64,14 +64,14 @@ int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu);
 void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
 	bool use_lock);
 #else
-int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu);
-int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
+static inline int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 {
 	return -HFI_ERROR;
 }
 
-void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
-	bool use_lock);
+/* HFI-only command helper; callers must select CONFIG_MDSS_HFI. */
+void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+		struct sde_plane *plane, bool use_lock);
 #endif // CONFIG_MDSS_HFI
 
 #endif  // _SDE_PLANE_HFI_H_
