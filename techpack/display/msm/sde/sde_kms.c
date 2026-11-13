@@ -2674,6 +2674,7 @@ static void _sde_kms_drm_obj_destroy(struct sde_kms *sde_kms)
 	_sde_kms_release_displays(sde_kms);
 }
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
 {
 	int rc = 0;
@@ -2700,6 +2701,8 @@ static int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *de
 	return rc;
 }
 
+#endif /* CONFIG_MDSS_HFI */
+
 static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
 {
 	int itr;
@@ -2718,6 +2721,7 @@ static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms
 	}
 }
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static int _sde_kms_send_reg_dma_last_cmd_hfi(struct sde_kms *sde_kms)
 {
 	struct sde_reg_dma_buffer *last_cmd_buf = NULL;
@@ -2830,6 +2834,8 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 
 	return ret;
 }
+
+#endif /* CONFIG_MDSS_HFI */
 
 static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 {
@@ -5054,11 +5060,15 @@ static int sde_kms_idle_timer_control(struct msm_kms *kms, bool timer_state)
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	ret = hfi_kms_send_idle_timer_ctrl(sde_kms->hfi_kms, timer_state);
 	if (ret)
 		SDE_ERROR("Failed to set idle timer state ret:%d\n", ret);
 
 	return ret;
+#else
+	return -EOPNOTSUPP;
+#endif
 }
 
 static void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
@@ -5103,11 +5113,15 @@ int sde_kms_reinit_device_lut_dma(struct sde_kms *sde_kms)
 		return -EINVAL;
 
 	/* send LUT DMA last_cmd buffer */
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
 	if (ret) {
 		SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
 		return ret;
 	}
+#else
+	return -EOPNOTSUPP;
+#endif
 
 	return ret;
 }
@@ -6142,6 +6156,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto power_error;
 	}
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = sde_kms_hfi_boot_init(sde_kms);
 		if (rc) {
@@ -6149,6 +6164,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 			return rc;
 		}
 	}
+#endif /* CONFIG_MDSS_HFI */
 
 	sde_kms->core_rev = sde_kms->catalog->hw_rev;
 
@@ -6433,6 +6449,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto error;
 	}
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = sde_kms_hfi_post_boot(sde_kms);
 		if (rc) {
@@ -6440,6 +6457,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 			return rc;
 		}
 	}
+#endif /* CONFIG_MDSS_HFI */
 
 	return 0;
 error:
@@ -6471,6 +6489,7 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = hfi_kms_init(sde_kms);
 		if (rc) {
@@ -6478,6 +6497,7 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 			return ERR_PTR(rc);
 		}
 	}
+#endif /* CONFIG_MDSS_HFI */
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);
 	sde_kms->dev = dev;
