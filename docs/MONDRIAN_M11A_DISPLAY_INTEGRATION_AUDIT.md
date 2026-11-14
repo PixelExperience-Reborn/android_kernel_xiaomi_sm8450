@@ -10,22 +10,25 @@ Status: **Display module compile/ABI PASS; panel hardware integration BLOCKED** 
 - OEM DTS: `PixelExperience-Reborn/android_kernel_xiaomi_sm8450-devicetrees@38e6cd7e65554f898e117dc099cec17a27930602` (diagnostic Cape/mondrian base + Goodix).
 - [Actual full build #43604810776](https://github.com/PixelExperience-Reborn/android_kernel_xiaomi_sm8450/actions/runs/43604810776): `msm_drm.ko` compiled and passed MODPOST/`vermagic` against pinned OEM `Module.symvers`; **not a hardware boot**.
 
-## Read-only hardware facts requiring OEM confirmation
+## Manufacturer-first M11A data contract
 
-Reference for analysis **only**, not copied as our device tree: [official LineageOS mondrian panel description at `2e649a7`](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-devicetrees/blob/2e649a7f3e762903eedad43d8256b91e28b512d8/qcom/display/display/dsi-panel-m11a-42-02-0a-dsc-cmd.dtsi), plus [board/display wiring](https://github.com/LineageOS/android_kernel_xiaomi_sm8450-devicetrees/blob/2e649a7f3e762903eedad43d8256b91e28b512d8/qcom/display/display/mondrian-sde-display-mtp.dtsi). Values must be validated against actual Xiaomi firmware/panel revision before our product selects them.
+**Implementation source policy:** only original Xiaomi MiCode source, the matching Xiaomi **stock firmware/DTBO for mondrian**, and appropriate official Qualcomm APIs are acceptable implementation inputs. LineageOS and other ROMs may be used to understand the problem, **never as a source of copied DTS, values, power commands, drivers or code**. A tested Qualcomm `msm_drm.ko` is not evidence of a complete M11A panel.
 
-| Signal / mode | Read-only reference | Current PE-Reborn source readiness |
+The public Xiaomi `mondrian-s-oss` DTS subset contains the board overlay and regulators but **not** the complete M11A panel configuration. Before selecting a panel for PixelExperience-Reborn AOSP 17, acquire OEM evidence for:
+
+| Hardware area | Required Xiaomi-authored or Xiaomi-stock evidence | Current verified state |
 |---|---|---|
-| Active display | 1440×3200, command mode, 60/90/120 Hz | Qualcomm DSI mode parser exists; no approved M11A product DTS |
-| Compression | DSC 1.2 (`0x12`), slice 720×32, 2 slices/packet, 10 bits/component, 8 bits/pixel | Qualcomm DSC parser accepts v1.2 and these property keys. Zero slice dimensions now rejected before division. No actual panel mode build |
-| Panel power | `vddio` 1.8 V, `vddd` 1.07 V, `vci` 3.0 V | Must map to selected OEM regulators and validate sequencing/board SKU |
-| Panel ESD | Reference IRQ GPIO 116 and panel-specific ESD commands | Driver, DT pinmux and actual ESD recovery not qualified |
-| UDFPS / local HBM | Xiaomi `mi,local-hbm-enabled`, FOD thresholds, DCS sequences and gamma selection | Current Qualcomm DSI parser has **no matching Xiaomi `mi,local-hbm`/FOD parsing**. No proven LHBM/UI-ready handshake |
-| Touch vs fingerprint | OEM touch IRQ/reset GPIO 21/20; Goodix UDFPS IRQ/reset GPIO 40/41, 3.2 V L9C | Goodix static DT/binding checks passed; panel brightness/FOD coordination and firmware/HAL remain unverified |
+| Exact panel and revision | Matching stock DT/firmware panel identity, SKU and board-id | Missing from published OEM DTS subset |
+| Command mode, timings and DSC | Exact stock panel timing modes, PHY rates, DSC revision, slice sizes and initialization sequences | Qualcomm parser and DSC code build; no manufacturer panel DTS qualified |
+| Regulators and reset | Xiaomi stock supply topology, voltage, enable/reset order and ESD status path | Selected OEM Cape regulators exist; panel wiring unqualified |
+| OLED brightness/Doze | Matching stock DCS command sequences and thermal/ESD recovery | Not available as reviewed OEM source yet |
+| Goodix UDFPS with LHBM | Device-verified Xiaomi panel illumination/FOD protocol and biometric HAL contract | OEM Goodix GPIO/regulator contract checked; display coordination unqualified |
+
+Native recovery plan: [Devicetrees OEM stock-DTBO diagnostic](https://github.com/PixelExperience-Reborn/android_kernel_xiaomi_sm8450-devicetrees/blob/bringup/a17-mondrian-oem-bsp-20261111/docs/XIAOMI_M11A_OEM_SOURCE_RECOVERY.md). Diagnostic extraction does not automatically certify source authenticity or authorize production integration.
 
 ## Verified boundary between diagnostic build and release
 
-1. Preserve OEM source provenance. Xiaomi's [missing display tree report](https://github.com/MiCode/kernel_devicetree/issues/31) and [kernel component disclosure report](https://github.com/MiCode/kernel_devicetree/issues/37) explain why the selected OEM subset is not itself sufficient proof of a production M11A panel overlay. Do **not** substitute or bulk-copy Lineage trees or invent panel DCS power tables.
+1. Preserve OEM source provenance. The selected Xiaomi `mondrian-s-oss` branch lacks a complete manufacturer M11A panel description at the inspected paths. Use the Xiaomi official fastboot firmware or device-owned stock partition as the reference for independently engineered hardware parameters. Do **not** substitute LineageOS sources, invent panel DCS power tables or claim binary-derived evidence automatically proves authorship.
 2. Obtain a validated Xiaomi M11A panel DTS / matching OEM firmware source (or an independently reimplemented, device-verified equivalent), match actual panel SKU and board IDs, compile with our three Cape bases and mondrian overlay, verify `fdtoverlay` and all `#include` dependencies. This hardware source gate is **not complete**.
 3. Audit and implement the required **Xiaomi-local** LHBM/FOD transitions, brightness and gamma mapping in our selected Qualcomm DSI hardware path, maintaining compatibility with Goodix UDFPS, panel power, ESD, suspend/resume and Android 17 biometric interfaces. Do not claim stock Qualcomm parsing provides Xiaomi features absent from its source.
 4. Check DSC config and 60/90/120 modes against the actual panel data; assert no invalid slice dimensions/clock/refresh selections; qualify M11A with the exact AOSP 17 HWC/VINTF/SELinux and firmware combination.
