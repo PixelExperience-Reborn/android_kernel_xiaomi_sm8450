@@ -177,7 +177,9 @@ static int check_support_v1(enum sde_reg_dma_features feature,
 		enum sde_reg_dma_blk blk, bool *is_supported);
 static int setup_payload_v1(struct sde_reg_dma_setup_ops_cfg *cfg);
 static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static int hfi_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
+#endif /* CONFIG_MDSS_HFI */
 static int reset_v1(struct sde_hw_ctl *ctl);
 static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode);
@@ -209,8 +211,10 @@ static void reg_dma_submit_queue_v4(struct sde_reg_dma_kickoff_cfg *cfg,
 					struct sde_hw_blk_reg_map *hw, u32 cmd);
 
 static int write_last_cmd_buffer(u32 dpu_idx);
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static int hfi_last_cmd_null_impl(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode);
+#endif /* CONFIG_MDSS_HFI */
 
 static reg_dma_internal_ops write_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
 	[HW_BLK_SELECT] = write_decode_sel,
@@ -233,7 +237,9 @@ static reg_dma_internal_ops validate_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
 };
 
 static struct sde_reg_dma_buffer *last_cmd_buf[DPU_MAX];
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static struct hfi_buff_dpu hfi_cfg_cached[DPU_MAX][DSPP_MAX] = {};
+#endif /* CONFIG_MDSS_HFI */
 
 static void get_decode_sel(unsigned long blk, u32 *decode_sel)
 {
@@ -742,6 +748,7 @@ static int validate_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
 	struct hfi_buff_dpu hfi_cfg = {};
@@ -815,6 +822,8 @@ static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_id
 
 	return ret;
 }
+
+#endif /* CONFIG_MDSS_HFI */
 
 static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
@@ -1061,13 +1070,17 @@ int init_v1(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	reg_dma[dpu_idx]->ops.check_support = check_support_v1;
 	reg_dma[dpu_idx]->ops.setup_payload = setup_payload_v1;
 	reg_dma[dpu_idx]->ops.kick_off[MSM_DISP_OP_HWIO] = kick_off_v1;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	reg_dma[dpu_idx]->ops.kick_off[MSM_DISP_OP_HFI] = hfi_kick_off_v1;
+#endif /* CONFIG_MDSS_HFI */
 	reg_dma[dpu_idx]->ops.reset = reset_v1;
 	reg_dma[dpu_idx]->ops.alloc_reg_dma_buf = alloc_reg_dma_buf_v1;
 	reg_dma[dpu_idx]->ops.dealloc_reg_dma = dealloc_reg_dma_v1;
 	reg_dma[dpu_idx]->ops.reset_reg_dma_buf = reset_reg_dma_buffer_v1;
 	reg_dma[dpu_idx]->ops.last_command[MSM_DISP_OP_HWIO] = last_cmd_v1;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 	reg_dma[dpu_idx]->ops.last_command[MSM_DISP_OP_HFI] = hfi_last_cmd_null_impl;
+#endif /* CONFIG_MDSS_HFI */
 	reg_dma[dpu_idx]->ops.dump_regs = dump_regs_v1;
 	reg_dma[dpu_idx]->ops.select_queue_sb = reg_dma_select_queue_sb_v1_to_3;
 
@@ -1265,7 +1278,9 @@ int init_v2(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 		sde_dbg_reg_register_dump_range(LUTDMA_DBG_NAME, name, base,
 				base + BASE_REG_SIZE, cfg->caps->xin_id);
 		reg_dma[dpu_idx]->ops.last_command_sb[MSM_DISP_OP_HWIO] = last_cmd_sb_v2;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		reg_dma[dpu_idx]->ops.last_command_sb[MSM_DISP_OP_HFI] = hfi_last_cmd_null_impl;
+#endif /* CONFIG_MDSS_HFI */
 	}
 
 	if (cfg->caps->reg_dma_blks[REG_DMA_TYPE_DB].valid == true) {
@@ -1472,6 +1487,7 @@ static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static int hfi_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
 	int rc = 0;
@@ -1483,6 +1499,8 @@ static int hfi_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 	rc = hfi_write_kick_off_v1(cfg, dpu_idx);
 	return rc;
 }
+
+#endif /* CONFIG_MDSS_HFI */
 
 int reset_v1(struct sde_hw_ctl *ctl)
 {
@@ -1784,11 +1802,14 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 static int hfi_last_cmd_null_impl(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode)
 {
 	return 0;
 }
+
+#endif /* CONFIG_MDSS_HFI */
 
 void deinit_v1(u32 dpu_idx)
 {
