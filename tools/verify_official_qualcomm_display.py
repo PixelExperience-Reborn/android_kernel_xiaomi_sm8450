@@ -179,7 +179,7 @@ def main():
     width_division = dsc_parser.find("intf_width % priv_info->dsc.config.slice_width")
     check(0 <= zero_height_guard < zero_width_guard < width_division,
           "DSI DSC parser must reject zero slice dimensions before modulo")
-    check('priv_info->dsc.config.dsc_version_minor != 0x2' in dsc_parser and
+    check(re.search(r"dsc_version_minor\\s*!=\\s*0x2", dsc_parser) and
           '"qcom,mdss-dsc-bit-per-component"' in dsc_parser and
           '"qcom,mdss-dsc-bit-per-pixel"' in dsc_parser,
           "Qualcomm DSI parser lost the required DSC 1.2 component/bitrate decoding")
