@@ -199,15 +199,15 @@ def main():
     active = []
     for line in reg_dma.splitlines():
         stripped = line.strip()
-        if re.match(r"#if(?:def|ndef)?\\b", stripped):
+        if re.match(r"#if(?:def|ndef)?\b", stripped):
             active.append(stripped)
-        elif re.match(r"#else\\b|#elif\\b", stripped):
+        elif re.match(r"#else\b|#elif\b", stripped):
             if active:
                 active[-1] = "alternate: " + active[-1]
-        elif re.match(r"#endif\\b", stripped):
+        elif re.match(r"#endif\b", stripped):
             check(bool(active), "unbalanced HFI REG DMA preprocessor guards")
             active.pop()
-        if re.search(r"\\bhfi_util_u32_prop_helper_add_prop(?:_by_obj)?\\s*\\(", line):
+        if re.search(r"\bhfi_util_u32_prop_helper_add_prop(?:_by_obj)?\s*\(", line):
             hfi_blocks.append(line)
             check("#if IS_ENABLED(CONFIG_MDSS_HFI)" in active,
                   "HFI REG DMA references firmware helpers without CONFIG_MDSS_HFI")
