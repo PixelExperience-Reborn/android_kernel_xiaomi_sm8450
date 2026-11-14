@@ -1,0 +1,56 @@
+name: Import official Qualcomm WAIPIO display source (trial only)
+
+on:
+  push:
+    branches: [bringup/a17-mondrian-qualcomm-display-trial-20261109]
+    paths:
+      - tools/import_official_qualcomm_display_trial.sh
+      - .github/workflows/qualcomm-waipio-display-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pe-reborn-mondrian-display-source-trial
+  cancel-in-progress: false
+
+jobs:
+  stage-official-qualcomm-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout only our isolated display trial branch
+        uses: actions/checkout@v4
+        with:
+          ref: bringup/a17-mondrian-qualcomm-display-trial-20261109
+          persist-credentials: true
+      - name: Validate source import script and protected source ownership
+        run: |
+          set -euo pipefail
+          bash -n tools/import_official_qualcomm_display_trial.sh
+          test "$(git branch --show-current)" = \
+            "bringup/a17-mondrian-qualcomm-display-trial-20261109"
+          test ! -e techpack/display
+          test -f drivers/gpu/drm/msm/Makefile
+      - name: Obtain exact Qualcomm Git source with WAIPIO recipe
+        run: |
+          set -euo pipefail
+          git init -q "$RUNNER_TEMP/qualcomm-display"
+          git -C "$RUNNER_TEMP/qualcomm-display" remote add origin \
+            https://github.com/qualcomm-linux/display-driver.git
+          git -C "$RUNNER_TEMP/qualcomm-display" -c protocol.version=2 fetch \
+            -q --depth=1 --filter=blob:none origin \
+            7b546db38822a40bc1beb5a9ace006b6541b947f
+          git -C "$RUNNER_TEMP/qualcomm-display" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/qualcomm-display" rev-parse HEAD)" = \
+            "7b546db38822a40bc1beb5a9ace006b6541b947f"
+          test -f "$RUNNER_TEMP/qualcomm-display/msm/Kbuild"
+      - name: Compare every Qualcomm source Git object and publish isolated trial
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          bash tools/import_official_qualcomm_display_trial.sh \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/qualcomm-display"
+          echo 'Source-only trial: Qualcomm WAIPIO SDE/DSI imported, Xiaomi DRM preserved.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT compiled or KMI, panel, HWC, boot or Android 17 qualified.' >> "$GITHUB_STEP_SUMMARY"

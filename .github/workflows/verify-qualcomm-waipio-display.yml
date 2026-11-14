@@ -1,0 +1,30 @@
+name: Qualcomm WAIPIO SDE/DSI source integrity and no duplicate DRM
+
+on:
+  push:
+    branches: [bringup/a17-mondrian-qualcomm-display-trial-20261109]
+    paths:
+      - 'techpack/display/**'
+      - 'tools/verify_official_qualcomm_display.py'
+      - '.github/workflows/verify-qualcomm-waipio-display.yml'
+  pull_request:
+    paths:
+      - 'techpack/display/**'
+      - 'tools/verify_official_qualcomm_display.py'
+      - '.github/workflows/verify-qualcomm-waipio-display.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-provenance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify official Qualcomm WAIPIO display source and original Xiaomi DRM isolation
+        run: python3 tools/verify_official_qualcomm_display.py
+      - name: Record explicit hardware compatibility blocks
+        run: |
+          echo 'Pinned official Qualcomm WAIPIO SDE/DSI source imported; Xiaomi generic DRM preserved.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT YET CONFIRMED: compile against OEM kernel 5.10, msm_drm.ko KMI, M11A panel, SurfaceFlinger/HWC or Android17 runtime.' >> "$GITHUB_STEP_SUMMARY"
