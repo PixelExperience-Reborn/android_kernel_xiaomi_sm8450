@@ -24,7 +24,7 @@ EXPECTED_BLOBS = {
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/sde/sde_hw_reg_dma_v1.c": "d1d7d344ff1a7470a9373f22b09c780e75496b3a",
-    "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",
+    "msm/dsi/dsi_panel.c": "df552d653b86e468c08eced977c61c6745d3750a",
     "msm/dsi/dsi_drm.c": "3c52f593cbae74edb64f65cadece113f5b8825e8",
     "msm/dsi/dsi_display.c": "30834f3f1cdc7e64fc4d1273837c96d8f6286537",
 }
@@ -171,6 +171,19 @@ def main():
           "Qualcomm SDE not configured for external module build")
     check("dsi_panel_parse" in panel_src,
           "Qualcomm DSI panel parsing not found")
+    # M11A reference modes use nonzero 720x32 DSC slices; malformed future
+    # DTS values must be rejected before the C modulo/division operations.
+    dsc_parser = panel_src[panel_src.index("static int dsi_panel_parse_dsc_params("):]
+    zero_height_guard = dsc_parser.find('DSI_ERR("invalid zero DSC slice height')
+    zero_width_guard = dsc_parser.find('DSI_ERR("invalid zero DSC slice width')
+    width_division = dsc_parser.find("intf_width % priv_info->dsc.config.slice_width")
+    check(0 <= zero_height_guard < zero_width_guard < width_division,
+          "DSI DSC parser must reject zero slice dimensions before modulo")
+    check('priv_info->dsc.config.dsc_version_minor != 0x2' in dsc_parser and
+          '"qcom,mdss-dsc-bit-per-component"' in dsc_parser and
+          '"qcom,mdss-dsc-bit-per-pixel"' in dsc_parser,
+          "Qualcomm DSI parser lost the required DSC 1.2 component/bitrate decoding")
+
     dp_lttpr = (DISPLAY / "msm/dp/dp_lttpr_compat.c").read_text()
     dp_panel = (DISPLAY / "msm/dp/dp_panel.c").read_text()
     dp_display = (DISPLAY / "msm/dp/dp_display.c").read_text()
