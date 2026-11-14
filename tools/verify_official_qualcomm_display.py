@@ -23,6 +23,7 @@ EXPECTED_BLOBS = {
     "msm/dp/dp_mst_sim.c": "9f8c1351862a4eaf540a7f7061ef779ca820c21b",
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
+    "msm/sde/sde_hw_reg_dma_v1.c": "d1d7d344ff1a7470a9373f22b09c780e75496b3a",
     "msm/dsi/dsi_panel.c": "3a355e554740a78efbd0b15f886abfee006ad9a7",
     "msm/dsi/dsi_drm.c": "3c52f593cbae74edb64f65cadece113f5b8825e8",
     "msm/dsi/dsi_display.c": "30834f3f1cdc7e64fc4d1273837c96d8f6286537",
@@ -187,6 +188,35 @@ def main():
         source = (DISPLAY / "msm/sde" / path).read_text()
         check("#if IS_ENABLED(CONFIG_MDSS_HFI)" in source,
               f"{path}: HFI-only color callback must not link in WAIPIO HWIO")
+    # Preserve real HWIO REG DMA. The two remaining MODPOST undefined symbols
+    # were referenced only by the optional HFI LUT DMA firmware transport.
+    # Verify their call sites and HFI-only callback registration are guarded.
+    reg_dma = (DISPLAY / "msm/sde/sde_hw_reg_dma_v1.c").read_text()
+    check("ops.kick_off[MSM_DISP_OP_HWIO] = kick_off_v1" in reg_dma and
+          "static int write_kick_off_v1(" in reg_dma,
+          "OEM WAIPIO must retain the hardware REG DMA kickoff")
+    hfi_blocks = []
+    active = []
+    for line in reg_dma.splitlines():
+        stripped = line.strip()
+        if re.match(r"#if(?:def|ndef)?\\b", stripped):
+            active.append(stripped)
+        elif re.match(r"#else\\b|#elif\\b", stripped):
+            if active:
+                active[-1] = "alternate: " + active[-1]
+        elif re.match(r"#endif\\b", stripped):
+            check(bool(active), "unbalanced HFI REG DMA preprocessor guards")
+            active.pop()
+        if re.search(r"\\bhfi_util_u32_prop_helper_add_prop(?:_by_obj)?\\s*\\(", line):
+            hfi_blocks.append(line)
+            check("#if IS_ENABLED(CONFIG_MDSS_HFI)" in active,
+                  "HFI REG DMA references firmware helpers without CONFIG_MDSS_HFI")
+        if "ops.kick_off[MSM_DISP_OP_HFI] = hfi_kick_off_v1" in line:
+            check("#if IS_ENABLED(CONFIG_MDSS_HFI)" in active,
+                  "HFI DMA callback registered in the non-HFI WAIPIO profile")
+    check(not active, "unbalanced HFI REG DMA preprocessor guards")
+    check(len(hfi_blocks) == 3,
+          "unexpected HFI REG DMA color serialization call inventory")
     hdcp = (DISPLAY / "hdcp/msm_hdcp.c").read_text()
     check("void __init msm_hdcp_register(void)" in hdcp and
           "void __exit msm_hdcp_unregister(void)" in hdcp and
