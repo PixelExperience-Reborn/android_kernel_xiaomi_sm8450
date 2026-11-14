@@ -3413,11 +3413,22 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		DSI_ERR("failed to parse qcom,mdss-dsc-slice-height\n");
 		goto error;
 	}
+	if (!data) {
+		DSI_ERR("invalid zero DSC slice height\n");
+		rc = -EINVAL;
+		goto error;
+	}
 	priv_info->dsc.config.slice_height = data;
 
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsc-slice-width", &data);
 	if (rc) {
 		DSI_ERR("failed to parse qcom,mdss-dsc-slice-width\n");
+		goto error;
+	}
+	/* The interface-width modulo below must never divide by zero. */
+	if (!data) {
+		DSI_ERR("invalid zero DSC slice width\n");
+		rc = -EINVAL;
 		goto error;
 	}
 	priv_info->dsc.config.slice_width = data;
