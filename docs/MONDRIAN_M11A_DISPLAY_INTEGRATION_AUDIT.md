@@ -41,3 +41,11 @@ Camera, Video and Audio remain explicitly out of scope. The AOSP 17 `seventeen` 
 ### Related reviewed change
 
 DSC parser rejects zero `qcom,mdss-dsc-slice-width` and `qcom,mdss-dsc-slice-height` before using the slice width as divisor: [commit `3cddcfe`](https://github.com/PixelExperience-Reborn/android_kernel_xiaomi_sm8450/commit/3cddcfea64ef7cec109fae428c27957d3d3c97bb). This prevents invalid DTS data from causing a division-by-zero; it does not supply a missing OEM panel definition.
+
+## Xiaomi's own published mi_disp source as reference (not a mondrian import)
+
+A manufacturer-maintained independent reference now exists:
+[MiCode/vendor_opensource_display-drivers, bsp-vermeer-t-oss](https://github.com/MiCode/vendor_opensource_display-drivers/tree/bsp-vermeer-t-oss) at immutable commit `c696b28150245a9ddd1f2701f071e4b580b44ce2`.
+Its `msm/mi_disp/mi_disp_lhbm.c` and `msm/mi_disp/mi_disp_feature.c` implement Xiaomi LHBM/FOD and event handling, while `include/uapi/display/drm/mi_disp.h` defines the Xiaomi userspace ioctl ABI. This manufacturer source is **not for mondrian** and does **not** establish matching panel values, board revision, module KMI or working AOSP 17 HAL.
+
+The source-only [mondrian Xiaomi Display comparison workflow](../.github/workflows/mondrian-xiaomi-display-candidate.yml) checks the immutable manufacturer revision and Git blob hashes, compares the selected Qualcomm source and emits an explicit **BLOCKED** record. It rejects any silent partial Xiaomi-ABI import until reviewed requalification. No blobs, DTS, DCS sequences or LineageOS source have been copied to our device. Continue only with a native mondrian adaptation and physical Xiaomi-stock panel evidence. Existing triple-root compiled OEM+Qualcomm Display remains the only qualified binary milestone.
