@@ -29,6 +29,8 @@ MODULES = ("msm_drm", "msm_mmrm", "qca_cld3_qca6490", "icnss2", "cfg80211",
            "cnss_prealloc", "cnss_nl", "cnss_utils", "mi_cnss_statistic",
            "qti_cpufreq_cdev", "qti_devfreq_cdev", "goodix_brl", "goodix_ts")
 SAFE_DSI = re.compile(r"^card[0-9]+-DSI-[0-9]+$")
+SAFE_COOLING = re.compile(r"^cooling_device[0-9]{1,4}$")
+SAFE_POLICY = re.compile(r"^policy[0-9]{1,3}$")
 SAFE_MODULE = re.compile(r"^[a-z0-9_][a-z0-9_.+-]{0,95}$")
 MAX_CAPTURE = 512 * 1024
 
@@ -70,6 +72,20 @@ class ReadOnlyADB:
             raise ValueError("connector not permitted")
         return self.call("shell", "cat", "/sys/class/drm/" + name + "/status")
 
+    def thermal_attribute(self, device, attr):
+        if not SAFE_COOLING.fullmatch(device) or attr not in (
+                "type", "cur_state", "max_state"):
+            raise ValueError("thermal sysfs path not permitted")
+        return self.call("shell", "cat",
+                         "/sys/class/thermal/" + device + "/" + attr)
+
+    def cpufreq_attribute(self, policy, attr):
+        if not SAFE_POLICY.fullmatch(policy) or attr not in (
+                "scaling_cur_freq", "scaling_max_freq", "cpuinfo_max_freq"):
+            raise ValueError("cpufreq sysfs path not permitted")
+        return self.call("shell", "cat",
+                         "/sys/devices/system/cpu/cpufreq/" + policy + "/" + attr)
+
 
 def parse_mounts(text):
     entries = {}
@@ -110,6 +126,57 @@ def compatible_names(text):
     return [part for part in parts if len(part) < 128
             and re.fullmatch(r"[\w,._+-]+", part)
             and part.startswith(("qcom,", "xiaomi,"))]
+
+
+def _bounded_number(value, cap=100000000):
+    if value is None or not value.isascii() or not value.isdecimal():
+        return None
+    parsed = int(value)
+    return parsed if parsed <= cap else None
+
+
+def thermal_and_cpufreq(adb):
+    cooling_devices = {}
+    listing = adb.call("shell", "ls", "-1", "/sys/class/thermal")
+    if listing:
+        for name in sorted(
+                [x for x in listing.splitlines() if SAFE_COOLING.fullmatch(x)],
+                key=lambda x: int(x.removeprefix("cooling_device")))[:128]:
+            cooling_type = adb.thermal_attribute(name, "type")
+            # The Qualcomm OEM driver emits cpu%d; do not claim an actual
+            # cooling device exists just because its module was compiled.
+            if not cooling_type or len(cooling_type) > 80:
+                continue
+            cooling_devices[name] = {
+                "type": cooling_type,
+                "current_state": _bounded_number(
+                    adb.thermal_attribute(name, "cur_state"), 100000),
+                "max_state": _bounded_number(
+                    adb.thermal_attribute(name, "max_state"), 100000),
+            }
+    policies = {}
+    listing = adb.call("shell", "ls", "-1",
+                       "/sys/devices/system/cpu/cpufreq")
+    if listing:
+        for policy in sorted(
+                [x for x in listing.splitlines() if SAFE_POLICY.fullmatch(x)],
+                key=lambda x: int(x.removeprefix("policy")))[:16]:
+            policies[policy] = {
+                "scaling_cur_freq_khz": _bounded_number(
+                    adb.cpufreq_attribute(policy, "scaling_cur_freq")),
+                "scaling_max_freq_khz": _bounded_number(
+                    adb.cpufreq_attribute(policy, "scaling_max_freq")),
+                "cpuinfo_max_freq_khz": _bounded_number(
+                    adb.cpufreq_attribute(policy, "cpuinfo_max_freq")),
+            }
+    return {
+        "thermal_cooling_devices": cooling_devices,
+        "cpu_thermal_cdev_types_observed": sorted(
+            {item["type"] for item in cooling_devices.values()
+             if re.fullmatch(r"cpu[0-9]+", item["type"])}),
+        "cpufreq_policies": policies,
+        "qos_limits_and_real_thermal_behavior_verified": False,
+    }
 
 
 def collect(adb):
@@ -155,6 +222,7 @@ def collect(adb):
         "mount_filesystems": parse_mounts(adb.read("/proc/mounts")),
         "kernel_modules": parse_modules(adb.read("/proc/modules")),
         "dsi_status": connectors,
+        "thermal_and_cpufreq": thermal_and_cpufreq(adb),
     }
     return {
         "schema_version": 1,
