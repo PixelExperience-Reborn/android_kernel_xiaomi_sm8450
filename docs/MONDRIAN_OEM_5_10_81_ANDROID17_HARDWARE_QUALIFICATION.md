@@ -70,6 +70,15 @@ or that the installed ROM is PE-Reborn. Presence of msm_drm, MMRM, WLAN or
 Goodix modules in /proc/modules does not prove they are functioning, and
 absence from that file does not reject a potentially built-in driver.
 
+The collector also lists observed Qualcomm CPUFreq policy rates from sysfs
+and cooling_device type/current_state/max_state values. The Xiaomi OEM
+qti_cpufreq_cdev driver normally registers cpuN thermal cooling devices;
+seeing one demonstrates registration, **not** proof that the CPU frequency
+QoS vote is effective under load. Compare readings at safe idle and during
+supervised device testing; do not infer absence of a driver merely from
+missing sysfs entries in a restricted Android build. Avoid running thermal
+stress loops until OEM protections have been independently verified.
+
 The collector writes a local JSON summary; nothing is uploaded to GitHub or
 sent to an external endpoint. Review the contents before sharing. Its
 qualification section intentionally remains false until independent physical
