@@ -1,0 +1,38 @@
+name: Mondrian OEM 5.10.81 AOSP17 on-device evidence contracts
+
+on:
+  push:
+    branches:
+      - audit/a17-mondrian-oem-runtime-gates-20261115
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Guard exact OEM kernel base (no Linux version upgrade)
+        run: |
+          set -euo pipefail
+          grep -Fx 'VERSION = 5' Makefile
+          grep -Fx 'PATCHLEVEL = 10' Makefile
+          grep -Fx 'SUBLEVEL = 81' Makefile
+          test -f tools/collect_mondrian_a17_runtime.py
+          test -f tests/test_mondrian_a17_runtime_evidence.py
+      - name: Test only read-only, simulated ADB contract
+        run: |
+          python3 -m unittest discover \
+            -s tests -p 'test_mondrian_a17_runtime_evidence.py' -v
+      - name: Verify kernel tree is unchanged by source-only diagnostic
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- Makefile arch/arm64/configs/vendor/mondrian_GKI.config
+          echo '[PASS] Source-only ADB evidence tests, OEM 5.10.81 unchanged' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] Real mondrian PE-Reborn A17 boot and hardware qualification' >> "$GITHUB_STEP_SUMMARY"
