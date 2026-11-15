@@ -52,6 +52,31 @@ class FakeADBRunner:
             output = b"card0\ncard0-DSI-1\nrenderD128\n"
         elif cmd == ("shell", "cat", "/sys/class/drm/card0-DSI-1/status"):
             output = b"connected\n"
+        elif cmd == ("shell", "ls", "-1", "/sys/class/thermal"):
+            output = b"thermal_zone0\ncooling_device0\n"
+        elif cmd == ("shell", "cat", "/sys/class/thermal/cooling_device0/type"):
+            output = b"cpu0\n"
+        elif cmd == ("shell", "cat", "/sys/class/thermal/cooling_device0/cur_state"):
+            output = b"2\n"
+        elif cmd == ("shell", "cat", "/sys/class/thermal/cooling_device0/max_state"):
+            output = b"15\n"
+        elif cmd == ("shell", "ls", "-1", "/sys/devices/system/cpu/cpufreq"):
+            output = b"policy0\npolicy4\n"
+        elif cmd in (
+            ("shell", "cat", "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq"),
+            ("shell", "cat", "/sys/devices/system/cpu/cpufreq/policy4/scaling_cur_freq"),
+        ):
+            output = b"1500000\n"
+        elif cmd in (
+            ("shell", "cat", "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"),
+            ("shell", "cat", "/sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq"),
+        ):
+            output = b"2500000\n"
+        elif cmd in (
+            ("shell", "cat", "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq"),
+            ("shell", "cat", "/sys/devices/system/cpu/cpufreq/policy4/cpuinfo_max_freq"),
+        ):
+            output = b"3000000\n"
         elif cmd == ("shell", "cat", "/proc/modules"):
             output = b"msm_drm 1234 0 - Live 0x0\nmsm_mmrm 100 1 - Live 0x0\n"
         elif cmd == ("shell", "cat", "/proc/mounts"):
@@ -84,6 +109,13 @@ class MondrianADBContractTests(unittest.TestCase):
             "requested_module_names_observed"]["msm_drm"])
         self.assertEqual(data["observations"]["dsi_status"]["card0-DSI-1"],
                          "connected")
+        thermal = data["observations"]["thermal_and_cpufreq"]
+        self.assertIn("cpu0", thermal["cpu_thermal_cdev_types_observed"])
+        self.assertEqual(thermal["thermal_cooling_devices"][
+            "cooling_device0"]["current_state"], 2)
+        self.assertEqual(thermal["cpufreq_policies"][
+            "policy0"]["scaling_max_freq_khz"], 2500000)
+        self.assertFalse(thermal["qos_limits_and_real_thermal_behavior_verified"])
         self.assertTrue(data["serial_imei_or_user_data_collected"] is False)
         for qualified in data["qualification"].values():
             self.assertFalse(qualified)
@@ -123,6 +155,17 @@ class MondrianADBContractTests(unittest.TestCase):
             ReadOnlyADB(runner=FakeADBRunner()).connector_status("../foo")
         with self.assertRaises(ValueError):
             ReadOnlyADB(runner=FakeADBRunner()).read("/data/system/users/0.xml")
+
+    def test_thermal_and_cpufreq_sysfs_are_read_only_allowlisted(self):
+        adb = ReadOnlyADB(runner=FakeADBRunner())
+        with self.assertRaises(ValueError):
+            adb.thermal_attribute("cooling_device0/../../etc", "type")
+        with self.assertRaises(ValueError):
+            adb.thermal_attribute("cooling_device0", "trip_point")
+        with self.assertRaises(ValueError):
+            adb.cpufreq_attribute("policy0/../../etc", "scaling_max_freq")
+        with self.assertRaises(ValueError):
+            adb.cpufreq_attribute("policy0", "scaling_setspeed")
 
     def test_missing_proc_modules_means_not_observed_not_failed(self):
         self.assertFalse(parse_modules(None)["proc_modules_readable"])
