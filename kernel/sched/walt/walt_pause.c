@@ -5,6 +5,8 @@
 
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
+#include <linux/errno.h>
+#include <linux/printk.h>
 
 #ifdef CONFIG_HOTPLUG_CPU
 
@@ -82,11 +84,29 @@ EXPORT_SYMBOL(walt_pause_cpus);
 /* cpus will be modified */
 int walt_resume_cpus(struct cpumask *cpus)
 {
-	int ret = 0;
+	int ret = 0, cpu;
 	cpumask_t requested_cpus;
+	struct pause_cpu_state *state;
 
 	mutex_lock(&pause_lock);
 	cpumask_copy(&requested_cpus, cpus);
+
+	/*
+	 * Validate the entire requested mask before touching any reference
+	 * counts or the caller's CPU mask. An unmatched resume must not take
+	 * a count below zero and leave that CPU permanently marked paused.
+	 * pause_lock serialises this check with pause, resume and hotplug.
+	 */
+	for_each_cpu(cpu, &requested_cpus) {
+		state = per_cpu_ptr(&pause_state, cpu);
+		if (state->ref_count <= 0) {
+			pr_warn_ratelimited("unbalanced WALT resume CPU%d refs=%d\n",
+					    cpu, state->ref_count);
+			ret = -EINVAL;
+			goto unlock;
+		}
+	}
+
 	update_ref_counts(&requested_cpus, false);
 	update_pause_resume_cpus(cpus);
 
@@ -166,14 +186,16 @@ unlock:
 		       cpumask_pr_args(&re_pause_cpus));
 }
 
-/* do not perform online work in hotplug context */
+/*
+ * The refcounts are protected by pause_lock. A CPUHP callback cannot sample
+ * them without that lock, and taking it here can invert the hotplug locking
+ * order against pause_cpus()/resume_cpus(). Queue the existing replay worker
+ * unconditionally; it checks both online CPUs and refs under pause_lock.
+ * A superfluous online notification with no outstanding pause is a no-op.
+ */
 static int walt_pause_hp_online(unsigned int online_cpu)
 {
-	struct pause_cpu_state *pause_cpu_state;
-
-	pause_cpu_state = per_cpu_ptr(&pause_state, online_cpu);
-	if (pause_cpu_state->ref_count)
-		schedule_work(&walt_pause_online_work);
+	schedule_work(&walt_pause_online_work);
 	return 0;
 }
 

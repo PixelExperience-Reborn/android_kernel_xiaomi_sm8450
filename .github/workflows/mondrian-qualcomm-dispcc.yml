@@ -1,0 +1,86 @@
+name: Mondrian OEM Qualcomm CAPE DISPCC source and Clang23 compile
+
+on:
+  push:
+    branches:
+      - bringup/a17-mondrian-xiaomi-oem-base-20261109
+    paths:
+      - 'drivers/clk/qcom/dispcc-waipio.c'
+      - 'drivers/clk/qcom/Makefile'
+      - 'arch/arm64/configs/vendor/mondrian_GKI.config'
+      - 'tools/verify_mondrian_display_clock.py'
+      - '.github/workflows/mondrian-qualcomm-dispcc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mondrian-oem-cape-dispcc
+  cancel-in-progress: true
+
+jobs:
+  source-and-compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify real Xiaomi CAPE display source and runtime PM invariants
+        run: python3 tools/verify_mondrian_display_clock.py
+      - name: Install Kconfig host dependencies and ARM64 binutils
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            make bc bison flex libssl-dev libelf-dev binutils-aarch64-linux-gnu
+      - name: Restore immutable Android Clang r614150 (LLVM23) cache
+        id: clang-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/google-clang
+          key: android-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119-linux-x86
+      - name: Obtain pinned official compiler if absent
+        if: steps.clang-cache.outputs.cache-hit != 'true'
+        run: bash tools/fetch_android_kernel_clang.sh "$RUNNER_TEMP/google-clang"
+      - name: Verify real toolchain identity
+        run: |
+          set -euo pipefail
+          test "$(git -C "$RUNNER_TEMP/google-clang" rev-parse HEAD)" = \
+            c9ed23e2ba198658b630d4b10e09fa980cd43119
+          "$RUNNER_TEMP/google-clang/clang-r614150/bin/clang" --version | head -1 | \
+            grep -F 'clang version 23.'
+          echo "$RUNNER_TEMP/google-clang/clang-r614150/bin" >> "$GITHUB_PATH"
+      - name: Generate original OEM mondrian Kconfig and check CAPE clock
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          mkdir -p "$RUNNER_TEMP/dispcc-out"
+          make O="$RUNNER_TEMP/dispcc-out" gki_defconfig
+          bash scripts/kconfig/merge_config.sh -m -r \
+            -O "$RUNNER_TEMP/dispcc-out" \
+            "$RUNNER_TEMP/dispcc-out/.config" \
+            arch/arm64/configs/vendor/mondrian_GKI.config
+          make O="$RUNNER_TEMP/dispcc-out" olddefconfig
+          grep -Fx 'CONFIG_MSM_DISPCC_WAIPIO=m' "$RUNNER_TEMP/dispcc-out/.config"
+          grep -Fx '# CONFIG_DRM_MSM is not set' "$RUNNER_TEMP/dispcc-out/.config"
+      - name: Compile the real Qualcomm CAPE display clock object with strict Clang23
+        run: |
+          set -euo pipefail
+          export LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          make O="$RUNNER_TEMP/dispcc-out" -j3 \
+            drivers/clk/qcom/dispcc-waipio.o 2>&1 | tee "$RUNNER_TEMP/dispcc-compile.log"
+          test -s "$RUNNER_TEMP/dispcc-out/drivers/clk/qcom/dispcc-waipio.o"
+          echo '[PASS] Original Xiaomi Qualcomm CAPE display clock object compiled with Android Clang23' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] external Qualcomm msm_drm.ko and M11A panel/firmware/DT and hardware test' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve source-only compiler log (no flashable image)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mondrian-oem-dispcc-compile-evidence
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/dispcc-out/.config
+            ${{ runner.temp }}/dispcc-compile.log
