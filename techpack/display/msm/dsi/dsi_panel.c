@@ -3367,6 +3367,19 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		return 0;
 	}
 
+	/*
+	 * DSC PPS encodes picture dimensions as 16-bit fields. Validate the
+	 * active display size before building the PPS or dividing by a slice
+	 * dimension. This also rejects an invalid zero-width interface.
+	 */
+	if (!mode->timing.h_active || !mode->timing.v_active ||
+	    mode->timing.h_active > 0xffff ||
+	    mode->timing.v_active > 0xffff) {
+		DSI_ERR("invalid DSC picture dimensions: %u x %u\n",
+			mode->timing.h_active, mode->timing.v_active);
+		return -EINVAL;
+	}
+
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsc-version", &data);
 	if (rc) {
 		priv_info->dsc.config.dsc_version_major = 0x1;
@@ -3413,8 +3426,14 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		DSI_ERR("failed to parse qcom,mdss-dsc-slice-height\n");
 		goto error;
 	}
-	if (!data) {
-		DSI_ERR("invalid zero DSC slice height\n");
+	/*
+	 * sde_dsc_populate_dsc_config() divides by (slice_height - 1).
+	 * A slice height of one would reach a kernel divide-by-zero. Values
+	 * beyond picture height also cannot describe a valid picture slice.
+	 */
+	if (data < 2 || data > mode->timing.v_active) {
+		DSI_ERR("invalid DSC slice height: %u, picture height: %u\n",
+			data, mode->timing.v_active);
 		rc = -EINVAL;
 		goto error;
 	}
@@ -3473,6 +3492,12 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 			&data);
 	if (rc) {
 		DSI_ERR("failed to parse qcom,mdss-dsc-bit-per-pixel\n");
+		goto error;
+	}
+	/* The 10-bit DSC PPS bpp field is expressed in six integer bits. */
+	if (!data || data > 0x3f) {
+		DSI_ERR("invalid DSC bits per pixel: %u\n", data);
+		rc = -EINVAL;
 		goto error;
 	}
 	priv_info->dsc.config.bits_per_pixel = data << 4;

@@ -56,3 +56,19 @@ The OEM comparison found a critical ABI ownership detail: the manufacturer
 are in its separate UAPI `mi_disp.h`. A native AOSP17 fingerprint service
 must not assume another ROM's header layout; verify the numeric contract
 against the actual selected kernel before implementing userspace events.
+
+## Fail-closed Qualcomm DSC parser hardening (OEM 5.10.81)
+
+The selected Qualcomm parser previously rejected a zero slice height but
+**allowed height 1**, even though `sde_dsc_populate_dsc_config()` divides by
+`slice_height - 1`. The native PE-Reborn patch validates height >= 2 and
+height <= picture height before invoking that function. It also checks the
+16-bit PPS picture dimensions and the 10-bit fixed-point PPS bpp integer
+range before encoding. This affects only malformed DSC configurations;
+the 1440x3200, slice-height 32 candidate observed in third-party diagnostics
+would not be rejected on these grounds. No candidate is approved without
+independent manufacturer evidence.
+
+The source regression tests and full OEM/Display/MMRM compile gate must both
+pass at the new kernel commit before updating pinned external module and
+devicetree checks. `seventeen` and production panel selection remain unchanged.

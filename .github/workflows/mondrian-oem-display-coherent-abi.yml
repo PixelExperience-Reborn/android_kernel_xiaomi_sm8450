@@ -24,6 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/verify_official_qualcomm_display.py
+          python3 -m unittest discover -s tests -p 'test_mondrian_dsc_bounds.py' -v
           test -f techpack/display/msm/Kbuild
           test -f techpack/display/config/gki_waipiodisp.conf
           ! grep -Eq '^CONFIG_DRM_MSM=' arch/arm64/configs/vendor/mondrian_GKI.config
@@ -79,7 +80,7 @@ jobs:
           test "$(git -C kernel hash-object drivers/thermal/qcom/qti_cpufreq_cdev.c)" = 838273f5b513b9afc04886dec65f2443c1c96783
           test "$(git -C kernel hash-object drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_core.c)" = b69ef74097add548baa4aba65aa0293c4d7e8c40
           test "$(git -C kernel hash-object drivers/clk/qcom/dispcc-waipio.c)" = 99154962330757af632e7e4423c8e84ddff6c3d0
-          test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.c)" = df552d653b86e468c08eced977c61c6745d3750a
+          test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.c)" = d109cc1f39fd7e70c0d9518839437cb2b161d81c
           grep -Fx 'SUBLEVEL = 81' kernel/Makefile
           (cd kernel && python3 tools/verify_mondrian_thermal.py)
           (cd kernel && python3 tools/verify_mondrian_goodix.py)

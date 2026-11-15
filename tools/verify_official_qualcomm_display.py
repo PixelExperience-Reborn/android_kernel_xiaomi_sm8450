@@ -24,7 +24,7 @@ EXPECTED_BLOBS = {
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/sde/sde_hw_reg_dma_v1.c": "d1d7d344ff1a7470a9373f22b09c780e75496b3a",
-    "msm/dsi/dsi_panel.c": "df552d653b86e468c08eced977c61c6745d3750a",
+    "msm/dsi/dsi_panel.c": "d109cc1f39fd7e70c0d9518839437cb2b161d81c",
     "msm/dsi/dsi_drm.c": "3c52f593cbae74edb64f65cadece113f5b8825e8",
     "msm/dsi/dsi_display.c": "30834f3f1cdc7e64fc4d1273837c96d8f6286537",
 }
