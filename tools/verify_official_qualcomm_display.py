@@ -174,7 +174,7 @@ def main():
     # M11A reference modes use nonzero 720x32 DSC slices; malformed future
     # DTS values must be rejected before the C modulo/division operations.
     dsc_parser = panel_src[panel_src.index("static int dsi_panel_parse_dsc_params("):]
-    zero_height_guard = dsc_parser.find('DSI_ERR("invalid zero DSC slice height')
+    zero_height_guard = dsc_parser.find('DSI_ERR("invalid DSC slice height:')
     zero_width_guard = dsc_parser.find('DSI_ERR("invalid zero DSC slice width')
     width_division = dsc_parser.find("intf_width % priv_info->dsc.config.slice_width")
     check(0 <= zero_height_guard < zero_width_guard < width_division,
