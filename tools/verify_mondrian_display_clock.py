@@ -5,6 +5,7 @@ Source-level requirements only; a compile and physical device test are separate.
 Do not copy another ROM's display controller or replace Qualcomm CAPE PLL values.
 """
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,11 +65,26 @@ def main():
     # Qualcomm msm_drm.ko; never duplicate it with the generic in-tree MSM.
     check("CONFIG_DRM_MSM=" not in board and "CONFIG_DRM_MSM=" not in gki,
           "potential conflicting in-kernel MSM DRM enabled")
-    check(not (ROOT / "techpack/display").exists(),
-          "unreviewed Qualcomm external display sources copied into OEM kernel")
+    # A plain OEM kernel must not silently acquire unknown Display sources.
+    # The coherent OEM+Display candidate intentionally stages the independently
+    # reviewed official Qualcomm WAIPIO snapshot. Re-run the complete pinned
+    # blob/Kbuild review rather than disabling this source-provenance gate.
+    display = ROOT / "techpack/display"
+    if display.exists():
+        check(display.is_dir(), "Qualcomm Display path is not a directory")
+        reviewer = ROOT / "tools/verify_official_qualcomm_display.py"
+        check(reviewer.is_file(),
+              "staged Qualcomm Display lacks an independent source verifier")
+        result = subprocess.run([sys.executable, str(reviewer)], cwd=ROOT,
+                                check=False)
+        check(result.returncode == 0,
+              "Qualcomm Display failed the pinned source and Kbuild profile audit")
+        print("[PASS] Reviewed Qualcomm Display snapshot and actual Kbuild profiles")
+    else:
+        print("[PASS] OEM-only tree has no external Qualcomm Display import")
     check("stub/" in techpack, "unexpected OEM techpack structure")
     print("[PASS] Original Qualcomm CAPE DISPCC preserved; PM success/error paths balanced")
-    print("[PASS] No conflicting in-tree DRM_MSM or unreviewed external techpack import")
+    print("[PASS] Generic DRM_MSM remains disabled; OEM techpack structure preserved")
     print("[NOT VERIFIED] Qualcomm msm_drm.ko, M11A panel firmware, full KMI or physical boot")
 
 
