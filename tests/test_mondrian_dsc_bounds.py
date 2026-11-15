@@ -49,7 +49,7 @@ class MondrianDscBoundsTests(unittest.TestCase):
         self.assertLess(self.parser.index(guard),
                         self.parser.index("priv_info->dsc.config.bits_per_pixel = data << 4;"))
         self.assertLess(self.parser.index(guard),
-                        self.parser.index("sde_dsc_populate_dsc_config("))
+                        self.parser.index("rc = sde_dsc_populate_dsc_config("))
         region = self.parser[self.parser.index(guard):
                              self.parser.index("priv_info->dsc.config.bits_per_pixel = data << 4;")]
         self.assertIn("goto error;", region)
