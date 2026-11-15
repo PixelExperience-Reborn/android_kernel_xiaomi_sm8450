@@ -20,6 +20,7 @@ OEM_REFERENCE_COMMIT = "c696b28150245a9ddd1f2701f071e4b580b44ce2"
 OEM_BLOBS = {
     "msm/Kbuild": "38ab5fbddacaee8bc0576475d1cd58d81ff47566",
     "msm/mi_disp/mi_disp_lhbm.c": "4b6a266f4e9feee11d4a9071b3c5a67277f141e1",
+    "msm/mi_disp/mi_disp_lhbm.h": "373a71a481d254091f40c20e9da1406f17edaf09",
     "msm/mi_disp/mi_disp_feature.c": "14136033374c4c8ea78dfbd6342aff4ca98b718a",
     "include/uapi/display/drm/mi_disp.h": "545952d8c9ce572a4de1a893b383a77d8f83ecf9",
 }
@@ -33,13 +34,14 @@ REQUIRED_OEM_TOKENS = {
         "mi_disp/mi_disp_feature.o"),
     "msm/mi_disp/mi_disp_lhbm.c": (
         "mi_disp_lhbm_fod_thread_create", "mi_disp_lhbm_fod_enabled",
-        "LHBM_TARGET_BRIGHTNESS_WHITE_1000NIT"),
+        "LHBM_TARGET_BRIGHTNESS_WHITE_1000NIT", "MI_DISP_EVENT_FOD"),
     "msm/mi_disp/mi_disp_feature.c": (
-        "mi_disp_feature_attach_display", "mi_disp_lhbm_fod_thread_create",
-        "MI_DISP_EVENT_FOD"),
+        "mi_disp_feature_attach_display", "mi_disp_lhbm_fod_thread_create"),
+    "msm/mi_disp/mi_disp_lhbm.h": (
+        "LOCAL_HBM_UI_READY", "FOD_LOW_BRIGHTNESS_CAPTURE"),
     "include/uapi/display/drm/mi_disp.h": (
         "MI_DISP_IOCTL_SET_LOCAL_HBM", "MI_DISP_IOCTL_REGISTER_EVENT",
-        "MI_DISP_EVENT_FOD", "LOCAL_HBM_UI_READY"),
+        "MI_DISP_EVENT_FOD"),
 }
 
 
@@ -49,7 +51,7 @@ class SourceAuditError(RuntimeError):
 
 def source_blob_sha(source):
     payload = source.read_bytes()
-    header = b"blob " + str(len(payload)).encode("ascii") + b"\\x00"
+    header = b"blob " + str(len(payload)).encode("ascii") + b"\x00"
     return hashlib.sha1(header + payload).hexdigest()
 
 
@@ -151,7 +153,7 @@ def main():
     try:
         report = audit(args.kernel.resolve(), args.xiaomi_reference.resolve())
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\\n")
+        args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     except (OSError, SourceAuditError) as exc:
         parser.error(str(exc))
     print("[PASS] Xiaomi-published display/LHBM source reference pinned")

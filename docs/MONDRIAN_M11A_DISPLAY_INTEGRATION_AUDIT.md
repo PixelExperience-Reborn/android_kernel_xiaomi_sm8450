@@ -49,3 +49,10 @@ A manufacturer-maintained independent reference now exists:
 Its `msm/mi_disp/mi_disp_lhbm.c` and `msm/mi_disp/mi_disp_feature.c` implement Xiaomi LHBM/FOD and event handling, while `include/uapi/display/drm/mi_disp.h` defines the Xiaomi userspace ioctl ABI. This manufacturer source is **not for mondrian** and does **not** establish matching panel values, board revision, module KMI or working AOSP 17 HAL.
 
 The source-only [mondrian Xiaomi Display comparison workflow](../.github/workflows/mondrian-xiaomi-display-candidate.yml) checks the immutable manufacturer revision and Git blob hashes, compares the selected Qualcomm source and emits an explicit **BLOCKED** record. It rejects any silent partial Xiaomi-ABI import until reviewed requalification. No blobs, DTS, DCS sequences or LineageOS source have been copied to our device. Continue only with a native mondrian adaptation and physical Xiaomi-stock panel evidence. Existing triple-root compiled OEM+Qualcomm Display remains the only qualified binary milestone.
+
+The OEM comparison found a critical ABI ownership detail: the manufacturer
+`LOCAL_HBM_UI_READY` and `FOD_LOW_BRIGHTNESS_CAPTURE` bits are defined in
+`msm/mi_disp/mi_disp_lhbm.h` (kernel-internal), whereas ioctl/event names
+are in its separate UAPI `mi_disp.h`. A native AOSP17 fingerprint service
+must not assume another ROM's header layout; verify the numeric contract
+against the actual selected kernel before implementing userspace events.

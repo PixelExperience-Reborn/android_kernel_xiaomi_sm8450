@@ -18,15 +18,15 @@ class MiCodeDisplayContractTests(unittest.TestCase):
         self.assertEqual(module.KERNEL_VERSION, "5.10.81")
         self.assertTrue(module.OEM_REFERENCE_REPO.startswith("MiCode/"))
         self.assertEqual(len(module.OEM_REFERENCE_COMMIT), 40)
-        self.assertEqual(len(module.OEM_BLOBS), 4)
+        self.assertEqual(len(module.OEM_BLOBS), 5)
         self.assertNotIn("LineageOS", module.OEM_REFERENCE_REPO)
 
     def test_git_blob_hash_is_exact_git_object_format(self):
         import hashlib
         with tempfile.TemporaryDirectory() as name:
             path = Path(name) / "source.c"
-            path.write_bytes(b"kernel source\\n")
-            expected = hashlib.sha1(b"blob 14\\0kernel source\\n").hexdigest()
+            path.write_bytes(b"kernel source\n")
+            expected = hashlib.sha1(b"blob 14\0kernel source\n").hexdigest()
             self.assertEqual(module.source_blob_sha(path), expected)
 
     def test_reject_missing_or_modified_xiaomi_reference(self):
@@ -46,7 +46,7 @@ class MiCodeDisplayContractTests(unittest.TestCase):
             root = Path(name)
             (root / ".git").mkdir()
             with patch.object(module.subprocess, "check_output",
-                              return_value="deadbeef\\n"):
+                              return_value="deadbeef\n"):
                 with self.assertRaisesRegex(module.SourceAuditError, "wrong Xiaomi"):
                     module.verify_oem_reference(root)
 
@@ -63,7 +63,7 @@ class MiCodeDisplayContractTests(unittest.TestCase):
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text("Qualcomm WAIPIO display")
             (root / "Makefile").write_text(
-                "VERSION = 5\\nPATCHLEVEL = 10\\nSUBLEVEL = 81\\n")
+                "VERSION = 5\nPATCHLEVEL = 10\nSUBLEVEL = 81\n")
             config = root / "arch/arm64/configs/vendor/mondrian_GKI.config"
             config.parent.mkdir(parents=True, exist_ok=True)
             config.write_text("# mondrian")
