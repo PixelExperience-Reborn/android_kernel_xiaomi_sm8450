@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PixelExperience-Reborn/android_kernel_xiaomi_sm8450-modules
-          ref: 95b795b6167bc83c1b3fa5d68f85b0906808c51c
+          ref: 3f415fc514abf22c0f8c4c37d5110559451591e0
           path: external-modules
           submodules: recursive
           persist-credentials: false
@@ -166,6 +166,7 @@ jobs:
           python3 external-modules/tools/verify_external_module_abi.py \
             --kernel kernel --kernel-out "$RUNNER_TEMP/mondrian-out" \
             --module "$display/msm/msm_drm.ko" \
+            --expected-kernel-commit "$GITHUB_SHA" \
             --out "$RUNNER_TEMP/display-abi-evidence.json"
           echo '[PASS] Coherent merged OEM 5.10.81 + official Qualcomm Display compiled and passed MODPOST/vermagic' >> "$GITHUB_STEP_SUMMARY"
           echo '[PENDING] M11A LHBM/FOD, firmware, HWC, DTBO, vendor_dlkm and on-device tests' >> "$GITHUB_STEP_SUMMARY"
