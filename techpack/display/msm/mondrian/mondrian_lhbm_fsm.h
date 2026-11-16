@@ -20,6 +20,7 @@ enum mondrian_lhbm_phase {
 
 enum mondrian_lhbm_panel_event {
 	MONDRIAN_LHBM_PANEL_ON,
+	MONDRIAN_LHBM_PANEL_QUIESCE,
 	MONDRIAN_LHBM_PANEL_OFF,
 	MONDRIAN_LHBM_DOZE_ENTER,
 	MONDRIAN_LHBM_DOZE_EXIT,
@@ -48,6 +49,8 @@ struct mondrian_lhbm_fsm {
 	bool esd;
 	bool factory_qualified;
 	bool cancel_pending;
+	/* Remains set until physical panel power-off is acknowledged. */
+	bool power_off_pending;
 };
 
 void mondrian_lhbm_init(struct mondrian_lhbm_fsm *fsm, bool factory_qualified);

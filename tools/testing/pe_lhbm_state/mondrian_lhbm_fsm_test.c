@@ -231,6 +231,65 @@ static void test_duplicate_panel_on_cannot_escape_doze(void)
 	assert(mondrian_lhbm_finger(&state, true, &effect) == -EAGAIN);
 }
 
+
+static void test_quiesce_requires_real_power_off_before_reenable(void)
+{
+	unsigned int on;
+	ready_panel();
+	on = turn_on();
+	ack_on(on);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_QUIESCE,
+					&effect) == 0);
+	assert(state.power_off_pending);
+	assert(effect.signal_fod_ready && !effect.fod_ready);
+	assert(effect.hw == MONDRIAN_LHBM_HW_NONE);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_ON,
+					&effect) == -EAGAIN);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_OFF,
+					&effect) == 0);
+	assert(!state.power_off_pending);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_ON,
+					&effect) == 0);
+}
+
+static void test_esd_is_sticky_after_early_quiesce(void)
+{
+	ready_panel();
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_ESD_DETECTED,
+					&effect) == 0);
+	assert(state.esd && state.power_off_pending);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_QUIESCE,
+					&effect) == 0);
+	assert(state.esd && state.power_off_pending);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_ON,
+					&effect) == -EAGAIN);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_OFF,
+					&effect) == 0);
+	assert(!state.esd && !state.power_off_pending);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_ON,
+					&effect) == 0);
+}
+
+static void test_fault_stays_sticky_until_physical_power_off(void)
+{
+	unsigned int token;
+	ready_panel();
+	token = turn_on();
+	assert(mondrian_lhbm_timeout(&state, token, &effect) == -ETIMEDOUT);
+	assert(state.phase == MONDRIAN_LHBM_FAULT);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_QUIESCE,
+					&effect) == 0);
+	assert(state.phase == MONDRIAN_LHBM_FAULT);
+	assert(state.power_off_pending);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_ON,
+					&effect) == -EAGAIN);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_OFF,
+					&effect) == 0);
+	assert(state.phase == MONDRIAN_LHBM_DISABLED);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_ON,
+					&effect) == 0);
+}
+
 static void test_invalid_inputs(void)
 {
 	mondrian_lhbm_init(&state, true);
@@ -254,7 +313,10 @@ int main(void)
 	test_generation_wrap_fails_closed();
 	test_doze_while_on_pending_is_serialized();
 	test_duplicate_panel_on_cannot_escape_doze();
+	test_quiesce_requires_real_power_off_before_reenable();
+	test_esd_is_sticky_after_early_quiesce();
+	test_fault_stays_sticky_until_physical_power_off();
 	test_invalid_inputs();
-	puts("[PASS] 13 native mondrian LHBM/FOD cases (no DSI hardware IO)");
+	puts("[PASS] 16 native mondrian LHBM/FOD cases (no DSI hardware IO)");
 	return 0;
 }

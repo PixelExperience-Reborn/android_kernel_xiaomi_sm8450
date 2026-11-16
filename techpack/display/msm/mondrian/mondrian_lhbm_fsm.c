@@ -59,6 +59,7 @@ void mondrian_lhbm_init(struct mondrian_lhbm_fsm *fsm,
 	fsm->esd = false;
 	fsm->factory_qualified = factory_qualified;
 	fsm->cancel_pending = false;
+	fsm->power_off_pending = false;
 }
 
 int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
@@ -71,8 +72,9 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 
 	switch (event) {
 	case MONDRIAN_LHBM_PANEL_ON:
-		if (fsm->esd || fsm->phase == MONDRIAN_LHBM_FAULT)
-			return -EAGAIN; /* Full OFF -> ON cycle required. */
+		if (fsm->esd || fsm->power_off_pending ||
+		    fsm->phase == MONDRIAN_LHBM_FAULT)
+			return -EAGAIN; /* Physical OFF must complete first. */
 		if (fsm->phase == MONDRIAN_LHBM_STOPPING ||
 		    (fsm->panel_on && fsm->doze))
 			return -EBUSY; /* A duplicate ON cannot bypass Doze. */
@@ -83,15 +85,33 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 		if (fsm->phase == MONDRIAN_LHBM_DISABLED)
 			fsm->phase = MONDRIAN_LHBM_IDLE;
 		return 0;
-	case MONDRIAN_LHBM_PANEL_OFF:
+	case MONDRIAN_LHBM_PANEL_QUIESCE:
 	case MONDRIAN_LHBM_ESD_DETECTED:
-		/* Never attempt DSI after power loss or during ESD recovery. */
+		/*
+		 * Revoke readiness before DSI OFF, but never mistake starting
+		 * that command for verified loss of physical panel power.
+		 * Preserve a sticky FAULT/ESD until post-unprepare succeeds.
+		 */
 		if (fsm->phase == MONDRIAN_LHBM_READY)
 			effect->signal_fod_ready = true;
 		fsm->panel_on = false;
 		fsm->doze = false;
-		fsm->esd = event == MONDRIAN_LHBM_ESD_DETECTED;
+		fsm->power_off_pending = true;
+		if (event == MONDRIAN_LHBM_ESD_DETECTED)
+			fsm->esd = true;
 		fsm->cancel_pending = false;
+		if (fsm->phase != MONDRIAN_LHBM_FAULT)
+			fsm->phase = MONDRIAN_LHBM_DISABLED;
+		return next_token(fsm, effect);
+	case MONDRIAN_LHBM_PANEL_OFF:
+		/* Called only after dsi_panel_power_off() returns success. */
+		if (fsm->phase == MONDRIAN_LHBM_READY)
+			effect->signal_fod_ready = true;
+		fsm->panel_on = false;
+		fsm->doze = false;
+		fsm->cancel_pending = false;
+		fsm->power_off_pending = false;
+		fsm->esd = false;
 		fsm->phase = MONDRIAN_LHBM_DISABLED;
 		return next_token(fsm, effect);
 	case MONDRIAN_LHBM_DOZE_ENTER:

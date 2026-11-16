@@ -52,14 +52,30 @@ class MondrianLhbmPanelLifecycle(unittest.TestCase):
         disable = function_body(PANEL_C, "int dsi_panel_disable(", "int dsi_panel_unprepare(")
         self.assertLess(disable.index("mutex_lock(&panel->panel_lock)"),
                         disable.index("MONDRIAN_LHBM_ESD_DETECTED"))
-        self.assertLess(disable.index("MONDRIAN_LHBM_PANEL_OFF"),
+        self.assertLess(disable.index("MONDRIAN_LHBM_PANEL_QUIESCE"),
                         disable.index("DSI_CMD_SET_OFF"))
+        self.assertNotIn("MONDRIAN_LHBM_PANEL_OFF", disable)
         self.assertIn("atomic_read(&panel->esd_recovery_pending)", disable)
         power_down = PANEL_C[PANEL_C.index("int dsi_panel_post_unprepare("):]
         self.assertLess(power_down.index("dsi_panel_power_off(panel)"),
                         power_down.index("MONDRIAN_LHBM_PANEL_OFF"))
+        self.assertLess(power_down.index("if (rc) {"),
+                        power_down.index("MONDRIAN_LHBM_PANEL_OFF"))
+        self.assertLess(power_down.index("goto error;"),
+                        power_down.index("MONDRIAN_LHBM_PANEL_OFF"))
         self.assertLess(power_down.index("MONDRIAN_LHBM_PANEL_OFF"),
                         power_down.index("mutex_unlock(&panel->panel_lock)"))
+
+    def test_shutdown_is_not_a_verified_poweroff_ack(self):
+        self.assertIn("MONDRIAN_LHBM_PANEL_QUIESCE", MODEL)
+        self.assertIn("power_off_pending = true;", MODEL)
+        self.assertIn("power_off_pending = false;", MODEL)
+        model_pre = function_body(MODEL,
+                                  "case MONDRIAN_LHBM_PANEL_QUIESCE:",
+                                  "case MONDRIAN_LHBM_PANEL_OFF:")
+        self.assertNotIn("fsm->esd = false;", model_pre)
+        self.assertNotIn("fsm->power_off_pending = false;", model_pre)
+        self.assertIn("fsm->phase != MONDRIAN_LHBM_FAULT", model_pre)
 
     def test_doze_transitions_only_after_successful_panel_command(self):
         for start, end, cmd, event in (

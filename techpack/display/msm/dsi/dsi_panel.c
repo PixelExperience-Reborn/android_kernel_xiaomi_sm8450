@@ -6434,7 +6434,7 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	/* Revoke pending FOD state before panel OFF or ESD recovery. */
 	dsi_panel_mondrian_lhbm_event_locked(panel,
 		atomic_read(&panel->esd_recovery_pending) ?
-		MONDRIAN_LHBM_ESD_DETECTED : MONDRIAN_LHBM_PANEL_OFF);
+		MONDRIAN_LHBM_ESD_DETECTED : MONDRIAN_LHBM_PANEL_QUIESCE);
 #endif
 
 	/* Avoid sending panel off commands when ESD recovery is underway */

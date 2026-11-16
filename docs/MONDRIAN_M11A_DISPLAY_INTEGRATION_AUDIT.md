@@ -129,3 +129,20 @@ This is lifecycle observability only: continuous splash and external
 DRM-panel/bridge paths, real LHBM DSI commands, `mi_disp` UAPI, AOSP17
 Goodix HAL/SELinux/VINTF and physical tests remain unqualified. Do not
 activate fingerprint illumination from this code.
+
+## 16 Nov 2026 — Distinguish DSI shutdown from verified panel power-off
+
+Fixed a real lifecycle ordering hazard: the prior native FSM treated both
+`dsi_panel_disable()` (which begins DSI OFF and may fail) and
+`dsi_panel_post_unprepare()` (where `dsi_panel_power_off()` succeeded)
+as a completed `MONDRIAN_LHBM_PANEL_OFF`. This could clear ESD or timeout
+faults before a physical power-down, allowing a premature PANEL_ON.
+
+The native `MONDRIAN_LHBM_PANEL_QUIESCE` revokes FOD readiness before
+the DSI OFF command, sets `power_off_pending` and retains sticky FAULT
+or ESD. Only a successful physical power-off callback clears those gates
+and permits the next panel ON; a failed `dsi_panel_power_off()` leaves
+the block active. Three new host C race/fault scenarios and a Python
+lifecycle regression test check this contract. The production factory
+qualification remains false and **no LHBM DCS or Goodix notification
+is enabled**.
