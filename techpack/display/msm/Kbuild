@@ -374,3 +374,9 @@ msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 			     msm_prop.o
 
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
+
+# PE-Reborn mondrian: isolated LHBM/FOD transition state, no hardware I/O.
+# Keep the object WAIPIO-only; real panel callbacks are NOT enabled.
+ifeq ($(CONFIG_ARCH_WAIPIO), y)
+msm_drm-y += mondrian/mondrian_lhbm_fsm.o
+endif

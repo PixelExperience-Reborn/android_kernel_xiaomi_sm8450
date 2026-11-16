@@ -72,3 +72,34 @@ independent manufacturer evidence.
 The source regression tests and full OEM/Display/MMRM compile gate must both
 pass at the new kernel commit before updating pinned external module and
 devicetree checks. `seventeen` and production panel selection remain unchanged.
+
+## 16 Nov 2026 — Native mondrian LHBM/FOD state model (inert hardware boundary)
+
+The native PixelExperience-Reborn C state model compiles into Qualcomm WAIPIO
+msm_drm.ko as msm/mondrian/mondrian_lhbm_fsm.o. It is an internal implementation
+component only: no DSI writes, sysfs, ioctl, exported symbol, fake device node,
+Goodix callbacks or user-facing interface have been created.
+
+State transitions are: qualified panel ON -> IDLE -> fingerprint DOWN ->
+STARTING and an ON intent -> actual hardware acknowledgement -> READY
+event -> fingerprint UP -> OFF intent -> actual hardware acknowledgement ->
+IDLE. Doze and finger cancellation invalidate pending ON operations and
+request a compensating OFF; panel OFF and ESD immediately revoke FOD ready
+and invalidate stale acknowledgements without sending unsafe DSI commands.
+Timeouts and failed OFF requests become a sticky fault until full panel reset.
+Generational tokens reject stale acknowledgements and fail on integer wrap.
+All transitions must be serialized by the future panel lock owner.
+
+The native C regression suite (11 scenarios) executes on a host compiler
+first, followed by the real pinned LLVM23 OEM 5.10.81/Qualcomm Display
+build to qualify msm_drm.ko and ABI. The explicit factory-qualification flag
+is false in production because there is currently no instantiating caller.
+Host tests simulate qualification purely to test transitions; they do
+NOT assert the real M11A/R66451 panel is qualified. Never create a false
+FOD-ready event before the actual DSI operation has been verified.
+
+Next gate: authenticated Xiaomi stock DTBO/vendor_boot, exact panel-specific
+LHBM commands, synchronized DSI hardware implementation with safe ACK/error
+path, AOSP 17 biometric/UDFPS service and SELinux/VINTF contracts, and
+physical mondrian tests of doze, ESD, thermals and fingerprint operation.
+Do not merge seventeen or enable production DTBO/LHBM from this milestone.

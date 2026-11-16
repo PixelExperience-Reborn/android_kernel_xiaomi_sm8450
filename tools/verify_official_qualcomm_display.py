@@ -15,7 +15,7 @@ DISPLAY = ROOT / "techpack/display"
 EXPECTED_BLOBS = {
     "Kbuild": "cd50990e1abfbbbf37862c1fb5b231c1cc07571b",
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
-    "msm/Kbuild": "ec664f1b1b5c575a76981e3df1b010c95399cdd4",
+    "msm/Kbuild": "89281cef95fab7a68a940856a722c502f46c93dd",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
     "msm/qcom_display_internal.h": "574d1c903e6c04edfc247f76dd829c25f92c5e66",
     "msm/sde_hdcp_2x.c": "9a497ce0370a33a02822cff6ec06e33cc209c9ca",
@@ -75,6 +75,8 @@ def verify_build_profiles():
         check(len(selected_objects) == len(set(selected_objects)),
               f"{name}: duplicate object linked into msm_drm.o")
         objects = set(selected_objects)
+        check(("mondrian/mondrian_lhbm_fsm.o" in objects) == (waipio == "y"),
+              f"{name}: native mondrian LHBM FSM must be WAIPIO-only")
         check({"sde/sde_hw_dsc.o", "sde/sde_hw_dsc_1_2.o", "sde_dsc_helper.o",
                "dsi/dsi_panel.o"} <= objects,
               f"{name}: native SDE/DSI/DSC objects were lost")

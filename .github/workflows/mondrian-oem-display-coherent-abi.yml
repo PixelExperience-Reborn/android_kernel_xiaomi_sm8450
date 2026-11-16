@@ -25,6 +25,15 @@ jobs:
           set -euo pipefail
           python3 tools/verify_official_qualcomm_display.py
           python3 -m unittest discover -s tests -p 'test_mondrian_dsc_bounds.py' -v
+          # Run the exact native C state machine as a host regression test.
+          # This does not perform DSI hardware IO or certify a panel.
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -DMONDRIAN_LHBM_HOST_TEST \
+            -I techpack/display/msm/mondrian \
+            techpack/display/msm/mondrian/mondrian_lhbm_fsm.c \
+            tools/testing/pe_lhbm_state/mondrian_lhbm_fsm_test.c \
+            -o /tmp/pe-mondrian-lhbm-fsm
+          /tmp/pe-mondrian-lhbm-fsm
           test -f techpack/display/msm/Kbuild
           test -f techpack/display/config/gki_waipiodisp.conf
           ! grep -Eq '^CONFIG_DRM_MSM=' arch/arm64/configs/vendor/mondrian_GKI.config

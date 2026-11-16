@@ -25,7 +25,7 @@ OEM_BLOBS = {
     "include/uapi/display/drm/mi_disp.h": "545952d8c9ce572a4de1a893b383a77d8f83ecf9",
 }
 QUALCOMM_BLOBS = {
-    "techpack/display/msm/Kbuild": "ec664f1b1b5c575a76981e3df1b010c95399cdd4",
+    "techpack/display/msm/Kbuild": "89281cef95fab7a68a940856a722c502f46c93dd",
     "techpack/display/msm/dsi/dsi_panel.c": "d109cc1f39fd7e70c0d9518839437cb2b161d81c",
 }
 REQUIRED_OEM_TOKENS = {
