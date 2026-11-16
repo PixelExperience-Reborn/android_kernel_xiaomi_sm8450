@@ -58,6 +58,7 @@ void mondrian_lhbm_init(struct mondrian_lhbm_fsm *fsm,
 	fsm->doze = false;
 	fsm->esd = false;
 	fsm->factory_qualified = factory_qualified;
+	fsm->cancel_pending = false;
 }
 
 int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
@@ -72,8 +73,9 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 	case MONDRIAN_LHBM_PANEL_ON:
 		if (fsm->esd || fsm->phase == MONDRIAN_LHBM_FAULT)
 			return -EAGAIN; /* Full OFF -> ON cycle required. */
-		if (fsm->phase == MONDRIAN_LHBM_STOPPING)
-			return -EBUSY;
+		if (fsm->phase == MONDRIAN_LHBM_STOPPING ||
+		    (fsm->panel_on && fsm->doze))
+			return -EBUSY; /* A duplicate ON cannot bypass Doze. */
 		fsm->panel_on = true;
 		fsm->doze = false;
 		if (!fsm->factory_qualified)
@@ -89,6 +91,7 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 		fsm->panel_on = false;
 		fsm->doze = false;
 		fsm->esd = event == MONDRIAN_LHBM_ESD_DETECTED;
+		fsm->cancel_pending = false;
 		fsm->phase = MONDRIAN_LHBM_DISABLED;
 		return next_token(fsm, effect);
 	case MONDRIAN_LHBM_DOZE_ENTER:
@@ -99,8 +102,11 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 			effect->signal_fod_ready = true;
 			return request_stop(fsm, effect);
 		}
-		if (fsm->phase == MONDRIAN_LHBM_STARTING)
-			return request_stop(fsm, effect);
+		if (fsm->phase == MONDRIAN_LHBM_STARTING) {
+			/* Preserve in-flight ON order; dispatch OFF after its ACK. */
+			fsm->cancel_pending = true;
+			return 0;
+		}
 		if (fsm->phase == MONDRIAN_LHBM_IDLE)
 			fsm->phase = MONDRIAN_LHBM_DISABLED;
 		return 0;
@@ -128,11 +134,15 @@ int mondrian_lhbm_finger(struct mondrian_lhbm_fsm *fsm, bool down,
 		return rc;
 
 	if (!down) {
-		if (fsm->phase == MONDRIAN_LHBM_READY)
+		if (fsm->phase == MONDRIAN_LHBM_STARTING) {
+			/* Do not put OFF ahead of an asynchronous ON operation. */
+			fsm->cancel_pending = true;
+			return 0;
+		}
+		if (fsm->phase == MONDRIAN_LHBM_READY) {
 			effect->signal_fod_ready = true;
-		if (fsm->phase == MONDRIAN_LHBM_STARTING ||
-		    fsm->phase == MONDRIAN_LHBM_READY)
 			return request_stop(fsm, effect);
+		}
 		return 0;
 	}
 	if (!fsm->factory_qualified)
@@ -143,8 +153,9 @@ int mondrian_lhbm_finger(struct mondrian_lhbm_fsm *fsm, bool down,
 		return -EIO;
 	if (fsm->phase == MONDRIAN_LHBM_STOPPING)
 		return -EBUSY;
-	if (fsm->phase == MONDRIAN_LHBM_STARTING ||
-	    fsm->phase == MONDRIAN_LHBM_READY)
+	if (fsm->phase == MONDRIAN_LHBM_STARTING)
+		return fsm->cancel_pending ? -EBUSY : 0;
+	if (fsm->phase == MONDRIAN_LHBM_READY)
 		return 0; /* Duplicate DOWN must not retransmit. */
 	if (fsm->phase != MONDRIAN_LHBM_IDLE)
 		return -EAGAIN;
@@ -168,9 +179,12 @@ int mondrian_lhbm_complete(struct mondrian_lhbm_fsm *fsm, bool on,
 	if (on) {
 		if (fsm->phase != MONDRIAN_LHBM_STARTING)
 			return -ESTALE;
-		if (!success || !fsm->panel_on || fsm->doze || fsm->esd ||
-		    !fsm->factory_qualified)
+		if (!success || fsm->cancel_pending || !fsm->panel_on ||
+		    fsm->doze || fsm->esd || !fsm->factory_qualified) {
+			/* Physical ON completed before we may safely queue OFF. */
+			fsm->cancel_pending = false;
 			return request_stop(fsm, effect);
+		}
 		fsm->phase = MONDRIAN_LHBM_READY;
 		effect->signal_fod_ready = true;
 		effect->fod_ready = true; /* Real hardware ON ACK is mandatory. */
@@ -182,6 +196,7 @@ int mondrian_lhbm_complete(struct mondrian_lhbm_fsm *fsm, bool on,
 		fsm->phase = MONDRIAN_LHBM_FAULT;
 		return -EIO; /* Requires a full panel power cycle. */
 	}
+	fsm->cancel_pending = false;
 	fsm->phase = (fsm->panel_on && !fsm->doze && !fsm->esd &&
 		      fsm->factory_qualified) ?
 		MONDRIAN_LHBM_IDLE : MONDRIAN_LHBM_DISABLED;
@@ -197,9 +212,12 @@ int mondrian_lhbm_timeout(struct mondrian_lhbm_fsm *fsm,
 	if (token != fsm->token)
 		return -ESTALE;
 	if (fsm->phase == MONDRIAN_LHBM_STARTING) {
-		/* Timed-out ON may have reached panel: request hardware OFF. */
-		rc = request_stop(fsm, effect);
-		return rc ? rc : -ETIMEDOUT;
+		/* Hardware ON may still be in-flight. An OFF here can race it.
+		 * Demand a complete panel reset rather than send unsafe DSI.
+		 */
+		fsm->cancel_pending = false;
+		fsm->phase = MONDRIAN_LHBM_FAULT;
+		return -ETIMEDOUT;
 	}
 	if (fsm->phase == MONDRIAN_LHBM_STOPPING) {
 		fsm->phase = MONDRIAN_LHBM_FAULT;

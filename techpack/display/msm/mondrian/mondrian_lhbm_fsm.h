@@ -47,6 +47,7 @@ struct mondrian_lhbm_fsm {
 	bool doze;
 	bool esd;
 	bool factory_qualified;
+	bool cancel_pending;
 };
 
 void mondrian_lhbm_init(struct mondrian_lhbm_fsm *fsm, bool factory_qualified);

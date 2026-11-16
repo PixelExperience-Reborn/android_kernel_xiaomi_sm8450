@@ -103,3 +103,9 @@ LHBM commands, synchronized DSI hardware implementation with safe ACK/error
 path, AOSP 17 biometric/UDFPS service and SELinux/VINTF contracts, and
 physical mondrian tests of doze, ESD, thermals and fingerprint operation.
 Do not merge seventeen or enable production DTBO/LHBM from this milestone.
+
+Additional safety refinement: in-flight ON cancellation is deferred until
+its actual completion/ACK; an OFF intent must never overtake an unresolved
+ON transaction. A timed-out ON is treated as a required full-panel reset,
+not a potentially racing OFF DSI write. Duplicate PANEL_ON cannot bypass
+Doze. This behavior is host-tested before eventual hardware adaptation.
