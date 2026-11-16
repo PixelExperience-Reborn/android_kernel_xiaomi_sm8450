@@ -23,6 +23,10 @@
 #include "dsi_parser.h"
 #include "msm_drv.h"
 
+#ifdef CONFIG_ARCH_WAIPIO
+#include "../mondrian/mondrian_lhbm_fsm.h"
+#endif
+
 #define MAX_BL_LEVEL 4096
 #define MAX_BL_SCALE_LEVEL 1024
 #define MAX_SV_BL_SCALE_LEVEL 65535
@@ -253,6 +257,10 @@ struct dsi_panel {
 	struct device_node *rgb_right_led_node;
 
 	struct mutex panel_lock;
+#ifdef CONFIG_ARCH_WAIPIO
+	/* Inert mondrian state; no production hardware binding is permitted. */
+	struct mondrian_lhbm_fsm mondrian_lhbm;
+#endif
 	struct drm_panel *drm_panel;
 	bool has_drm_panel;
 	struct mipi_dsi_host *host;

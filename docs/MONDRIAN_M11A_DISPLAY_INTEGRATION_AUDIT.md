@@ -109,3 +109,23 @@ its actual completion/ACK; an OFF intent must never overtake an unresolved
 ON transaction. A timed-out ON is treated as a required full-panel reset,
 not a potentially racing OFF DSI write. Duplicate PANEL_ON cannot bypass
 Doze. This behavior is host-tested before eventual hardware adaptation.
+
+## 16 Nov 2026 — inert lifecycle wiring to the actual Qualcomm DSI panel
+
+The `mondrian_lhbm_fsm` is now embedded per `struct dsi_panel` for
+`CONFIG_ARCH_WAIPIO`. `dsi_panel_get()` initializes it with
+`factory_qualified=false` unconditionally. Native `dsi_panel_enable()`
+records panel ON *after successful DSI ON* under `panel_lock`; the
+disable path invalidates FOD before DSI OFF or ESD handling, and full
+power-down reinforces OFF. LP1/LP2/NOLP events are recorded only after
+successful panel commands, also under `panel_lock`. This uses the native
+Qualcomm panel lifetime, not another ROM's device abstraction. The bridge
+discards any unintended hardware intent and resets the factory qualifier
+instead of issuing unknown DCS or reporting a fake fingerprint-ready event.
+
+The added source/locking regression suite and LLVM23 `msm_drm.ko` compile
+must pass before the new exact SHA can be pinned into Modules/Devicetrees.
+This is lifecycle observability only: continuous splash and external
+DRM-panel/bridge paths, real LHBM DSI commands, `mi_disp` UAPI, AOSP17
+Goodix HAL/SELinux/VINTF and physical tests remain unqualified. Do not
+activate fingerprint illumination from this code.

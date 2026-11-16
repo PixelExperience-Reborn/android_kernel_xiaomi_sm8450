@@ -25,6 +25,7 @@ jobs:
           set -euo pipefail
           python3 tools/verify_official_qualcomm_display.py
           python3 -m unittest discover -s tests -p 'test_mondrian_dsc_bounds.py' -v
+          python3 -m unittest discover -s tests -p 'test_mondrian_lhbm_panel_lifecycle.py' -v
           # Run the exact native C state machine as a host regression test.
           # This does not perform DSI hardware IO or certify a panel.
           cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
@@ -89,7 +90,8 @@ jobs:
           test "$(git -C kernel hash-object drivers/thermal/qcom/qti_cpufreq_cdev.c)" = 838273f5b513b9afc04886dec65f2443c1c96783
           test "$(git -C kernel hash-object drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_core.c)" = b69ef74097add548baa4aba65aa0293c4d7e8c40
           test "$(git -C kernel hash-object drivers/clk/qcom/dispcc-waipio.c)" = 99154962330757af632e7e4423c8e84ddff6c3d0
-          test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.c)" = d109cc1f39fd7e70c0d9518839437cb2b161d81c
+          test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.c)" = 26cd60a86e4fb5e493e23026db406bb26df21d2d
+          test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.h)" = ca4fb0345b9ef141a2e255f92003483da2743607
           grep -Fx 'SUBLEVEL = 81' kernel/Makefile
           (cd kernel && python3 tools/verify_mondrian_thermal.py)
           (cd kernel && python3 tools/verify_mondrian_goodix.py)

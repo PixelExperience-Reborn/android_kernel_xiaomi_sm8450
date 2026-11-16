@@ -64,6 +64,34 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #define RSCC_MODE_THRESHOLD_TIME_US 40
 #define DCS_COMMAND_THRESHOLD_TIME_US 40
 
+
+#ifdef CONFIG_ARCH_WAIPIO
+/*
+ * Only called by the panel owner with panel_lock held. Until the exact
+ * mondrian panel is factory-qualified, these are internal bookkeeping
+ * notifications, NOT hardware writes or FOD-ready userspace events.
+ */
+static void dsi_panel_mondrian_lhbm_event_locked(
+	struct dsi_panel *panel, enum mondrian_lhbm_panel_event event)
+{
+	struct mondrian_lhbm_effect effect = { 0 };
+	int rc;
+
+	rc = mondrian_lhbm_panel_event(&panel->mondrian_lhbm, event, &effect);
+	if (rc && rc != -EOPNOTSUPP && rc != -ENODEV)
+		DSI_DEBUG("[%s] mondrian LHBM lifecycle rc=%d\n",
+			  panel->name, rc);
+
+	/* Hardware/FOD callbacks deliberately DO NOT exist at this stage. */
+	if (effect.hw != MONDRIAN_LHBM_HW_NONE ||
+	    effect.signal_fod_ready) {
+		DSI_ERR("[%s] unauthorized mondrian LHBM effect discarded\n",
+			panel->name);
+		mondrian_lhbm_init(&panel->mondrian_lhbm, false);
+	}
+}
+#endif
+
 static void dsi_dce_prepare_pps_header(char *buf, u32 pps_delay_ms)
 {
 	char *bp;
@@ -4524,6 +4552,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
 		return ERR_PTR(-ENOMEM);
+#ifdef CONFIG_ARCH_WAIPIO
+	/* Do not enable LHBM without authenticated mondrian panel DCS. */
+	mondrian_lhbm_init(&panel->mondrian_lhbm, false);
+#endif
 
 	if (has_drm_panel_or_bridge)
 		return dsi_panel_initialize_stub(panel, parent, type, trusted_vm_env);
@@ -5475,6 +5507,11 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 				panel->name, rc);
 	}
 
+#ifdef CONFIG_ARCH_WAIPIO
+	if (!rc)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+			MONDRIAN_LHBM_DOZE_ENTER);
+#endif
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5500,6 +5537,11 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 				panel->name, rc);
 	}
 
+#ifdef CONFIG_ARCH_WAIPIO
+	if (!rc)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+			MONDRIAN_LHBM_DOZE_ENTER);
+#endif
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5553,6 +5595,11 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
 		       panel->name, rc);
+#ifdef CONFIG_ARCH_WAIPIO
+	if (!rc)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+			MONDRIAN_LHBM_DOZE_EXIT);
+#endif
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -6255,6 +6302,9 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		}
 	}
 	panel->panel_initialized = true;
+#ifdef CONFIG_ARCH_WAIPIO
+	dsi_panel_mondrian_lhbm_event_locked(panel, MONDRIAN_LHBM_PANEL_ON);
+#endif
 
 error:
 	mutex_unlock(&panel->panel_lock);
@@ -6380,6 +6430,12 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	}
 
 	mutex_lock(&panel->panel_lock);
+#ifdef CONFIG_ARCH_WAIPIO
+	/* Revoke pending FOD state before panel OFF or ESD recovery. */
+	dsi_panel_mondrian_lhbm_event_locked(panel,
+		atomic_read(&panel->esd_recovery_pending) ?
+		MONDRIAN_LHBM_ESD_DETECTED : MONDRIAN_LHBM_PANEL_OFF);
+#endif
 
 	/* Avoid sending panel off commands when ESD recovery is underway */
 	if (!atomic_read(&panel->esd_recovery_pending)) {
@@ -6468,6 +6524,9 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 		       panel->name, rc);
 		goto error;
 	}
+#ifdef CONFIG_ARCH_WAIPIO
+	dsi_panel_mondrian_lhbm_event_locked(panel, MONDRIAN_LHBM_PANEL_OFF);
+#endif
 error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
