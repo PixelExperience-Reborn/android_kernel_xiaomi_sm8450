@@ -102,9 +102,7 @@ class MondrianLhbmPanelLifecycle(unittest.TestCase):
     def test_skip_panel_off_cannot_ack_physical_power_down(self):
         power_off = function_body(PANEL_C, "int dsi_panel_power_off(",
                                   "static int dsi_panel_tx_cmd_set(")
-        post = function_body(PANEL_C, "int dsi_panel_post_unprepare(",
-                             "\\n}") if False else PANEL_C[
-                                 PANEL_C.index("int dsi_panel_post_unprepare("):]
+        post = PANEL_C[PANEL_C.index("int dsi_panel_post_unprepare("):]
         # Qualcomm returns zero for skip_panel_off despite never disabling rails.
         self.assertIn("if (panel->skip_panel_off)", power_off)
         self.assertRegex(
