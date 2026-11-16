@@ -290,6 +290,26 @@ static void test_fault_stays_sticky_until_physical_power_off(void)
 					&effect) == 0);
 }
 
+static void test_skipped_power_off_preserves_fault_gate(void)
+{
+	unsigned int on;
+
+	ready_panel();
+	on = turn_on();
+	assert(mondrian_lhbm_timeout(&state, on, &effect) == -ETIMEDOUT);
+	assert(state.phase == MONDRIAN_LHBM_FAULT);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_QUIESCE,
+					&effect) == 0);
+	/* skip_panel_off means no physical OFF and thus no PANEL_OFF event. */
+	assert(state.power_off_pending);
+	assert(state.phase == MONDRIAN_LHBM_FAULT);
+	assert(mondrian_lhbm_panel_event(&state, MONDRIAN_LHBM_PANEL_ON,
+					&effect) == -EAGAIN);
+	assert(mondrian_lhbm_finger(&state, true, &effect) == -EAGAIN);
+	assert(!effect.signal_fod_ready);
+	assert(state.power_off_pending);
+}
+
 static void test_invalid_inputs(void)
 {
 	mondrian_lhbm_init(&state, true);
@@ -316,7 +336,8 @@ int main(void)
 	test_quiesce_requires_real_power_off_before_reenable();
 	test_esd_is_sticky_after_early_quiesce();
 	test_fault_stays_sticky_until_physical_power_off();
+	test_skipped_power_off_preserves_fault_gate();
 	test_invalid_inputs();
-	puts("[PASS] 16 native mondrian LHBM/FOD cases (no DSI hardware IO)");
+	puts("[PASS] 17 native mondrian LHBM/FOD cases (no DSI hardware IO)");
 	return 0;
 }

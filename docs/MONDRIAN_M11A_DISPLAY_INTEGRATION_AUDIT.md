@@ -158,3 +158,19 @@ the effect is not already from a successful `PANEL_OFF`. Tokens remain
 unchanged, so asynchronous acknowledgements cannot become accidentally
 valid. This is still source-only safety wiring: LHBM DCS and UDFPS HAL
 remain unimplemented, and no runtime-ready claim is made.
+
+### 16 Nov 2026 — skipped panel power-off is not a hardware ACK
+
+Audited the actual Qualcomm `dsi_panel_power_off()` and found that it
+returns `0` immediately when `panel->skip_panel_off` is true. The
+previous `dsi_panel_post_unprepare()` always dispatched
+`MONDRIAN_LHBM_PANEL_OFF` on this successful return, incorrectly clearing
+sticky ESD/FAULT/`power_off_pending` despite the rails remaining powered.
+The native mondrian bridge now dispatches this hardware-off event only when
+the physical power-off path was not skipped and returned success. A source
+regression checks the Qualcomm skip path and guarded acknowledgement; a
+host C test checks that a skipped-off fault cannot reach FOD ready or
+re-enable before a real panel OFF. This is fail-closed source safety only;
+no OEM M11A DCS, firmware, UDFPS HAL, runtime display or boot qualification
+is claimed. External Modules and Devicetrees SHA pins must be updated only
+after the new full OEM/Qualcomm Display compile succeeds.

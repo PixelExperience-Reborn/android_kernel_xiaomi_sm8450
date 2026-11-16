@@ -99,6 +99,23 @@ class MondrianLhbmPanelLifecycle(unittest.TestCase):
                 self.assertLess(fn.index(event),
                                 fn.index("mutex_unlock(&panel->panel_lock)"))
 
+    def test_skip_panel_off_cannot_ack_physical_power_down(self):
+        power_off = function_body(PANEL_C, "int dsi_panel_power_off(",
+                                  "static int dsi_panel_tx_cmd_set(")
+        post = function_body(PANEL_C, "int dsi_panel_post_unprepare(",
+                             "\\n}") if False else PANEL_C[
+                                 PANEL_C.index("int dsi_panel_post_unprepare("):]
+        # Qualcomm returns zero for skip_panel_off despite never disabling rails.
+        self.assertIn("if (panel->skip_panel_off)", power_off)
+        self.assertRegex(
+            post,
+            r"if \(!panel->skip_panel_off\)\s*"
+            r"dsi_panel_mondrian_lhbm_event_locked\(panel,\s*"
+            r"MONDRIAN_LHBM_PANEL_OFF\);",
+        )
+        self.assertLess(post.index("dsi_panel_power_off(panel)"),
+                        post.index("if (!panel->skip_panel_off)"))
+
     def test_no_unsupported_user_or_hardware_interface_was_enabled(self):
         for token in ("mi_disp_ioctl", "MI_DISP_IOCTL_SET_LOCAL_HBM",
                       "dsi_panel_set_lhbm", "local_hbm_dcs"):

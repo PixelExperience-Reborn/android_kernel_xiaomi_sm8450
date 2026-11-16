@@ -6534,7 +6534,14 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 		goto error;
 	}
 #ifdef CONFIG_ARCH_WAIPIO
-	dsi_panel_mondrian_lhbm_event_locked(panel, MONDRIAN_LHBM_PANEL_OFF);
+	/*
+	 * dsi_panel_power_off() also returns success when skip_panel_off is
+	 * set, without disabling the physical panel rails. In that case
+	 * retain the LHBM ESD/FAULT/power-off latch until a real OFF.
+	 */
+	if (!panel->skip_panel_off)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+						   MONDRIAN_LHBM_PANEL_OFF);
 #endif
 error:
 	mutex_unlock(&panel->panel_lock);

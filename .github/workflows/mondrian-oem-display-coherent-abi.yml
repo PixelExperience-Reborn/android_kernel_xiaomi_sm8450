@@ -90,7 +90,7 @@ jobs:
           test "$(git -C kernel hash-object drivers/thermal/qcom/qti_cpufreq_cdev.c)" = 838273f5b513b9afc04886dec65f2443c1c96783
           test "$(git -C kernel hash-object drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_core.c)" = b69ef74097add548baa4aba65aa0293c4d7e8c40
           test "$(git -C kernel hash-object drivers/clk/qcom/dispcc-waipio.c)" = 99154962330757af632e7e4423c8e84ddff6c3d0
-          test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.c)" = 7ca7d124211658f3cd65e14ffc3e2e0fb9d7b3be
+          test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.c)" = 3b32357c42c68477250bb7060ba07787ecb3d938
           test "$(git -C kernel hash-object techpack/display/msm/dsi/dsi_panel.h)" = ca4fb0345b9ef141a2e255f92003483da2743607
           grep -Fx 'SUBLEVEL = 81' kernel/Makefile
           (cd kernel && python3 tools/verify_mondrian_thermal.py)

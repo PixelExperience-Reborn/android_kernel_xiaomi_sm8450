@@ -26,7 +26,7 @@ OEM_BLOBS = {
 }
 QUALCOMM_BLOBS = {
     "techpack/display/msm/Kbuild": "89281cef95fab7a68a940856a722c502f46c93dd",
-    "techpack/display/msm/dsi/dsi_panel.c": "7ca7d124211658f3cd65e14ffc3e2e0fb9d7b3be",
+    "techpack/display/msm/dsi/dsi_panel.c": "3b32357c42c68477250bb7060ba07787ecb3d938",
     "techpack/display/msm/dsi/dsi_panel.h": "ca4fb0345b9ef141a2e255f92003483da2743607",
 }
 REQUIRED_OEM_TOKENS = {
