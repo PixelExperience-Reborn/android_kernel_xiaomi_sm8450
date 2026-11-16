@@ -146,3 +146,15 @@ the block active. Three new host C race/fault scenarios and a Python
 lifecycle regression test check this contract. The production factory
 qualification remains false and **no LHBM DCS or Goodix notification
 is enabled**.
+
+### Unexpected effect handling must preserve power-off gate
+
+The unqualified panel bridge can theoretically receive a non-empty internal
+effect once a future qualified adapter exists. Its old fallback called
+`mondrian_lhbm_init(..., false)`, resetting generation tokens and clearing
+`power_off_pending` **before verified physical power-off**. The bridge now
+revokes `factory_qualified` and retains a sticky FAULT/power-off gate if
+the effect is not already from a successful `PANEL_OFF`. Tokens remain
+unchanged, so asynchronous acknowledgements cannot become accidentally
+valid. This is still source-only safety wiring: LHBM DCS and UDFPS HAL
+remain unimplemented, and no runtime-ready claim is made.

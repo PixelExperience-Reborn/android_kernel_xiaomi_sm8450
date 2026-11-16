@@ -87,7 +87,16 @@ static void dsi_panel_mondrian_lhbm_event_locked(
 	    effect.signal_fod_ready) {
 		DSI_ERR("[%s] unauthorized mondrian LHBM effect discarded\n",
 			panel->name);
-		mondrian_lhbm_init(&panel->mondrian_lhbm, false);
+		/*
+		 * Fail closed without resetting generation tokens or clearing
+		 * the PRE_OFF/ESD latch. A false reinitialization here could
+		 * allow PANEL_ON before the real power rails are disabled.
+		 */
+		panel->mondrian_lhbm.factory_qualified = false;
+		if (event != MONDRIAN_LHBM_PANEL_OFF) {
+			panel->mondrian_lhbm.phase = MONDRIAN_LHBM_FAULT;
+			panel->mondrian_lhbm.power_off_pending = true;
+		}
 	}
 }
 #endif
