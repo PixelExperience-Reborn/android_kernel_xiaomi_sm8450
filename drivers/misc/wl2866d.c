@@ -524,7 +524,7 @@ static int wl2866d_init(struct  wl2866d_chip *chip)
 	}
 
 	pr_err("%s: en_gpio is %d\n", __func__, chip->en_gpio);
-	ret = gpio_request(chip->en_gpio, "wl2866d_en");
+	ret = devm_gpio_request(chip->dev, chip->en_gpio, "wl2866d_en");
 	//ret = devm_gpio_request_one(chip->dev, chip->en_gpio,
 		//				  GPIOF_OUT_INIT_LOW,
 		//				  "wl2866d_en");
@@ -533,7 +533,9 @@ static int wl2866d_init(struct  wl2866d_chip *chip)
 			return ret;
 	}
 
-	gpio_direction_output(chip->en_gpio, 0);
+	ret = gpio_direction_output(chip->en_gpio, 0);
+	if (ret)
+		return ret;
 	//if (chip && gpio_is_valid(chip->en_gpio)) {
 	//		gpio_set_value_cansleep(chip->en_gpio, 1);
 	//}
@@ -591,59 +593,41 @@ static int wl2866d_disable_power(struct  wl2866d_chip *chip)
 }
 
 
-static int wl2866d_enable_power(struct  wl2866d_chip *chip)
+
+static int wl2866d_enable_power(struct wl2866d_chip *chip)
 {
-	int ret = 0;
+	int ret, failure;
 
 	ret = regulator_set_voltage(chip->vin1, VIN1_1P35_VOL_MIN,
-						VIN1_1P35_VOL_MAX);
-	if (ret) {
-		dev_err(chip->dev,
-				"Unable to set voltage for vin1:%d\n", ret);
-		goto put_vin1;
-	}
+				    VIN1_1P35_VOL_MAX);
+	if (ret)
+		return ret;
 
 	ret = regulator_enable(chip->vin1);
-	if (ret) {
-		dev_err(chip->dev, "Unable to enable vin1:%d\n", ret);
-		goto unset_vin1;
-	}
+	if (ret)
+		goto reset_vin1;
 
 	ret = regulator_set_voltage(chip->vin2, VIN2_3P3_VOL_MIN,
-						VIN2_3P3_VOL_MAX);
-	if (ret) {
-		dev_err(chip->dev,
-				"Unable to set voltage for vin2:%d\n", ret);
+				    VIN2_3P3_VOL_MAX);
+	if (ret)
 		goto disable_vin1;
-	}
-
 
 	ret = regulator_enable(chip->vin2);
-	if (ret) {
-		dev_err(chip->dev, "Unable to enable vin2:%d\n", ret);
-		goto unset_vin2;
-	}
-	return 0;
+	if (!ret)
+		return 0;
 
-unset_vin2:
-	ret = regulator_set_voltage(chip->vin2, 0, VIN2_3P3_VOL_MAX);
-	if (ret)
-		dev_err(chip->dev,
-			"Unable to set (0) voltage for vin2:%d\n", ret);
-
+	/* Unwind both regulators without replacing the original failure. */
+	failure = ret;
+	regulator_set_voltage(chip->vin2, 0, VIN2_3P3_VOL_MAX);
+	ret = failure;
 disable_vin1:
-	ret = regulator_disable(chip->vin1);
-	if (ret)
-		dev_err(chip->dev, "Unable to disable vin1:%d\n", ret);
-
-unset_vin1:
-	ret = regulator_set_voltage(chip->vin1, 0, VIN1_1P35_VOL_MAX);
-	if (ret)
-		dev_err(chip->dev,
-			"Unable to set (0) voltage for vin1:%d\n", ret);
-
-put_vin1:
-	return ret;
+	failure = ret;
+	regulator_disable(chip->vin1);
+	ret = failure;
+reset_vin1:
+	failure = ret;
+	regulator_set_voltage(chip->vin1, 0, VIN1_1P35_VOL_MAX);
+	return failure;
 }
 
 static int wl2866d_vreg_init(struct  wl2866d_chip *chip)
@@ -750,19 +734,19 @@ static int wl2866d_probe(struct i2c_client *client,
 	}
 
 	ret = wl2866d_init(chip);
-
 	if (ret < 0) {
-		dev_err(&client->dev, "wl2866d init fail!\n");
-		ret = -ENODEV;
-		goto init_err;
+		dev_err(&client->dev, "wl2866d init failed: %d\n", ret);
+		wl2866d_disable_power(chip);
+		goto vreg_enable_err;
 	}
 
 	ret = sysfs_create_group(&client->dev.kobj,
 					   &wl2866d_attribute_group);
 	if (ret < 0) {
-		dev_info(&client->dev, "%s error creating sysfs attr files\n",
-			 __func__);
-		goto err_sysfs;
+		dev_err(&client->dev, "wl2866d sysfs registration failed: %d\n",
+			ret);
+		wl2866d_disable_power(chip);
+		goto vreg_enable_err;
 	}
 
 	mutex_lock(&wl2866d_mutex);
@@ -771,7 +755,6 @@ static int wl2866d_probe(struct i2c_client *client,
 
 	pr_err("%s,successfully\n", __func__);
 	return 0;
-err_sysfs:
 init_err:
 vreg_enable_err:
 	devm_regulator_put(chip->vin1);
@@ -795,6 +778,7 @@ static int wl2866d_remove(struct i2c_client *client)
 	mutex_unlock(&wl2866d_mutex);
 
 	sysfs_remove_group(&client->dev.kobj, &wl2866d_attribute_group);
+	wl2866d_disable_power(chip);
 	/* devm owns chip and its acquired regulators; no manual devm_kfree. */
 	return 0;
 }
