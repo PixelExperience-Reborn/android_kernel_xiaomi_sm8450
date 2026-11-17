@@ -693,76 +693,64 @@ static int wl2866d_voltage_init(struct  wl2866d_chip *chip)
 }
 
 static int wl2866d_probe(struct i2c_client *client,
-				 const struct i2c_device_id *id)
+			 const struct i2c_device_id *id)
 {
-	int ret = 0;
 	struct wl2866d_chip *chip;
+	int ret;
 
-	pr_err("%s,enrty\n", __func__);
-	/* The mutex is static: valid before probe and after remove. */
-	chip = devm_kzalloc(&client->dev, sizeof(struct wl2866d_chip), GFP_KERNEL);
-	if (!chip) {
-		ret = -ENOMEM;
-		goto err_mem;
-	}
+	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
+	if (!chip)
+		return -ENOMEM;
 
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		dev_err(&client->dev, "check_functionality failed\n");
-		ret = -EIO;
-		goto  init_err;
-	}
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
+		return -EIO;
 
 	chip->client = client;
-
 	chip->dev = &client->dev;
-	dev_set_drvdata(chip->dev, chip);
-	i2c_set_clientdata(chip->client, chip);
+	i2c_set_clientdata(client, chip);
 
+	/* devm owns regulator handles and the enable GPIO on every error. */
 	ret = wl2866d_vreg_init(chip);
-	if (ret < 0)	{
-		dev_err(&client->dev, "get vreg failed\n");
-		goto vreg_init_err;
-	}
+	if (ret)
+		return ret;
 
 	ret = wl2866d_voltage_init(chip);
+	if (ret)
+		return ret;
 
 	ret = wl2866d_enable_power(chip);
-	if (ret) {
-		dev_err(&client->dev, "enable power failed\n");
-		ret = -1;
-		goto vreg_enable_err;
-	}
+	if (ret)
+		return ret;
 
 	ret = wl2866d_init(chip);
-	if (ret < 0) {
-		dev_err(&client->dev, "wl2866d init failed: %d\n", ret);
-		wl2866d_disable_power(chip);
-		goto vreg_enable_err;
-	}
+	if (ret)
+		goto disable_power;
 
 	ret = sysfs_create_group(&client->dev.kobj,
-					   &wl2866d_attribute_group);
-	if (ret < 0) {
-		dev_err(&client->dev, "wl2866d sysfs registration failed: %d\n",
-			ret);
-		wl2866d_disable_power(chip);
-		goto vreg_enable_err;
-	}
+				 &wl2866d_attribute_group);
+	if (ret)
+		goto disable_power;
 
 	mutex_lock(&wl2866d_mutex);
-	camera_chip = chip;
+	if (camera_chip) {
+		ret = -EBUSY;
+	} else {
+		camera_chip = chip;
+		clear_use_count(0);
+	}
 	mutex_unlock(&wl2866d_mutex);
+	if (ret) {
+		sysfs_remove_group(&client->dev.kobj,
+				   &wl2866d_attribute_group);
+		goto disable_power;
+	}
 
-	pr_err("%s,successfully\n", __func__);
+	dev_info(&client->dev, "Xiaomi WL2866D camera power ready\n");
 	return 0;
-init_err:
-vreg_enable_err:
-	devm_regulator_put(chip->vin1);
-	devm_regulator_put(chip->vin2);
-vreg_init_err:
-	devm_kfree(chip->dev, chip);
-	chip = NULL;
-err_mem:
+
+disable_power:
+	wl2866d_disable_power(chip);
+	/* The devm GPIO and regulators are released after failed probe. */
 	return ret;
 }
 
