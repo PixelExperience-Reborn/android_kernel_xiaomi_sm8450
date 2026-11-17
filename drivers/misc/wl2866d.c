@@ -14,6 +14,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/mutex.h>
 #include <linux/atomic.h>
+#include <linux/limits.h>
 
 #define WL2866D_ID  0x64
 #define WL2866D_ID1  0x55
@@ -21,6 +22,8 @@
 #define AW_I2C_RETRY_DELAY 2
 #define MAX_DELAY_TIME 65420
 #define DELAY_SETP 1000
+/* Xiaomi Camera sensor power sequence IDs are 13..16 (four WL2866D rails). */
+#define WL2866D_FIRST_POWER_SEQ 13
 
 struct wl2866d_chip *camera_chip;
 struct wl2866d_voltage output_vol;
@@ -38,7 +41,7 @@ static const struct  wl2866d_map  wl2866d_on_config[] = {
 
 static atomic_t wl2866d_use_count[LAST_POWER_CH+1];
 
-struct mutex wl2866d_mutex;
+static DEFINE_MUTEX(wl2866d_mutex);
 
 static int wl2866d_i2c_write(struct wl2866d_chip *chip,
 			    unsigned char reg_addr, unsigned char reg_data)
@@ -92,309 +95,139 @@ void clear_use_count(int val)
 	}
 }
 
+
 int wl2866d_camera_power_down_all(void)
 {
-    int ret = -1;
-	ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, 0);//bit1
-	clear_use_count(0);
-	if (ret < 0) {
-		pr_err("wl2866d set enable failed\n");
-		return ret;
-	}
-    return ret;
-}
-
-//bit0:DVDD1, bit1:DVDD2, bit2:AVDD1, bit3:AVDD2
-//{0x03, 0x54}, OUT_DVDD1
-//{0x04, 0x64}, OUT_DVDD2
-//{0x05, 0x30}, OUT_AVDD1
-//{0x06, 0x30}, OUT_AVDD2
-//{0x0E, 0x0F}, VOL_ENABLE
-//{0x0E, 0x00}, VOL_DISABLE
-int wl2866d_camera_power_up(int out_iotype, int out_delay)
-{
-	int ret = -1;
-	unsigned char reg_val = 0;
-	uint16_t wl2866_time_delay = 0;
-	int wl2866_iotype = -1;
-	wl2866_iotype = out_iotype - 13;
-	if(camera_chip == NULL)
-	{
-		pr_err("wl2866d probe fail the camera_chip is NULL\n");
-		return ret;
-	}
+	int ret;
 
 	mutex_lock(&wl2866d_mutex);
-	atomic_inc(&wl2866d_use_count[wl2866_iotype]);
-	if(atomic_read(&wl2866d_use_count[wl2866_iotype]) > 1)
-	{
-		pr_err("wl2866_iotype:%d power up %d times, do nothing\n", wl2866_iotype, wl2866d_use_count[wl2866_iotype]);
-		mutex_unlock(&wl2866d_mutex);
-		return 0;
+	if (!camera_chip) {
+		ret = -ENODEV;
+		goto unlock;
 	}
+
+	ret = wl2866d_i2c_write(camera_chip,
+				wl2866d_on_config[VOL_ENABLE].reg, 0);
+	if (ret >= 0)
+		clear_use_count(0);
+unlock:
 	mutex_unlock(&wl2866d_mutex);
-
-	switch (wl2866_iotype) {
-	case OUT_DVDD1:
-		//front imx596 DVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[OUT_DVDD1].reg, output_vol.dvdd1);//bit0
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set dvdd1 failed\n");
-			break;
-		}
-
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d read enable failed\n");
-			break;
-		}
-
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val |= 0b0001;//bit 0
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit0
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		pr_err("wl2866d set OUT_DVDD1 success!");
-		break;
-
-	case OUT_DVDD2:
- 		//ultra ov8856 DVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[OUT_DVDD2].reg, output_vol.dvdd2);//bit1
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set dvdd2 failed\n");
-			break;
-		}
-
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("xyz wl2866d read enable failed\n");
-			break;
-		}
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val |= 0b0010;//bit1
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit1
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		pr_err("wl2866d set OUT_DVDD2 success!");
-		break;
-
-	case OUT_AVDD1:
-		//wide&front&ultra imx686&imx596&ov8856 IOVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[OUT_AVDD1].reg, output_vol.avdd1);//bit2
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set avdd1 failed\n");
-			break;
-		}
-
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d read enable failed\n");
-			break;
-		}
-
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val |= 0b0100;//bit2
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit2
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		pr_err("wl2866d set OUT_AVDD1 success!");
-		break;
-
-	case OUT_AVDD2:
-		//macro gc02m1 IOVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[OUT_AVDD2].reg, output_vol.avdd2);//bit3
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set avdd1 failed\n");
-			break;
-		}
-
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d read enable failed\n");
-			break;
-		}
-
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val |= 0b1000;//bit3
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit3
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		pr_err("wl2866d set OUT_AVDD2 success!");
-		break;
-	default:
-		pr_err("wl2866d unknown port!!!\n");
-		break;
-	}
-	//if wl2866 exit, xml powerUpSequence delayMs now mean delay time
-	wl2866_time_delay = DELAY_SETP * (out_delay);
-	if(MAX_DELAY_TIME < wl2866_time_delay) {
-		wl2866_time_delay = MAX_DELAY_TIME;
-	}
-	usleep_range(wl2866_time_delay , wl2866_time_delay + 100);
-	pr_err("wl2866d result = %d, wl2866d_iotype = %d, wl2866_time_delay is %d\n", ret, wl2866_iotype, wl2866_time_delay);
 	return ret;
+}
+
+/*
+ * Retain Xiaomi's four original output addresses and DT-supplied voltages.
+ * Only publish an updated reference count after the physical I2C write
+ * succeeds. Serialize the complete read/modify/write sequence: concurrent
+ * front/rear sensor power users must never race on VOL_ENABLE.
+ */
+static int wl2866d_camera_set_output(int out_iotype, int out_delay, bool enable)
+{
+	unsigned char reg_val, voltage = 0;
+	unsigned int delay_us;
+	int channel, users, ret;
+
+	/* Validate BEFORE indexing use_count or accessing a power register. */
+	if (out_iotype < WL2866D_FIRST_POWER_SEQ ||
+	    out_iotype > WL2866D_FIRST_POWER_SEQ + LAST_POWER_CH ||
+	    out_delay < 0)
+		return -EINVAL;
+
+	channel = out_iotype - WL2866D_FIRST_POWER_SEQ;
+	if (out_delay > MAX_DELAY_TIME / DELAY_SETP)
+		delay_us = MAX_DELAY_TIME;
+	else
+		delay_us = (unsigned int)out_delay * DELAY_SETP;
+
+	mutex_lock(&wl2866d_mutex);
+	if (!camera_chip) {
+		ret = -ENODEV;
+		goto unlock;
+	}
+
+	users = atomic_read(&wl2866d_use_count[channel]);
+	if (enable) {
+		if (users > 0) {
+			if (users == INT_MAX) {
+				ret = -EOVERFLOW;
+				goto unlock;
+			}
+			atomic_inc(&wl2866d_use_count[channel]);
+			ret = 0;
+			goto unlock;
+		}
+
+		switch (channel) {
+		case OUT_DVDD1:
+			voltage = output_vol.dvdd1;
+			break;
+		case OUT_DVDD2:
+			voltage = output_vol.dvdd2;
+			break;
+		case OUT_AVDD1:
+			voltage = output_vol.avdd1;
+			break;
+		case OUT_AVDD2:
+			voltage = output_vol.avdd2;
+			break;
+		default:
+			ret = -EINVAL;
+			goto unlock;
+		}
+
+		ret = wl2866d_i2c_write(camera_chip,
+			wl2866d_on_config[channel].reg, voltage);
+		if (ret < 0)
+			goto unlock;
+	} else {
+		if (users <= 0) {
+			ret = -EINVAL;
+			goto unlock;
+		}
+		if (users > 1) {
+			atomic_dec(&wl2866d_use_count[channel]);
+			ret = 0;
+			goto unlock;
+		}
+	}
+
+	ret = wl2866d_i2c_read(camera_chip,
+				wl2866d_on_config[VOL_ENABLE].reg,
+				&reg_val);
+	if (ret < 0)
+		goto unlock;
+
+	if (enable)
+		reg_val |= BIT(channel);
+	else
+		reg_val &= ~BIT(channel);
+
+	ret = wl2866d_i2c_write(camera_chip,
+				wl2866d_on_config[VOL_ENABLE].reg,
+				reg_val);
+	if (ret < 0)
+		goto unlock;
+
+	atomic_set(&wl2866d_use_count[channel], enable ? 1 : 0);
+	/* Preserve the OEM millisecond-to-microsecond delay and 65420us cap. */
+	if (delay_us)
+		usleep_range(delay_us, delay_us + 100);
+unlock:
+	mutex_unlock(&wl2866d_mutex);
+	return ret;
+}
+
+int wl2866d_camera_power_up(int out_iotype, int out_delay)
+{
+	return wl2866d_camera_set_output(out_iotype, out_delay, true);
 }
 EXPORT_SYMBOL(wl2866d_camera_power_up);
 
 int wl2866d_camera_power_down(int out_iotype, int out_delay)
 {
-	int ret = -1;
-	unsigned char reg_val = 0;
-	uint16_t wl2866_time_delay = 0;
-	int wl2866_iotype = -1;
-	wl2866_iotype = out_iotype - 13;
-
-	mutex_lock(&wl2866d_mutex);
-	atomic_dec(&wl2866d_use_count[wl2866_iotype]);
-	if(atomic_read(&wl2866d_use_count[wl2866_iotype]) > 0)
-	{
-		pr_err("wl2866_iotype:%d already have %d users, skip power down\n", wl2866_iotype, wl2866d_use_count[wl2866_iotype]);
-		mutex_unlock(&wl2866d_mutex);
-		return 0;
-	}
-	mutex_unlock(&wl2866d_mutex);
-	switch (wl2866_iotype) {
-	case OUT_DVDD1:
-		//front imx596 DVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d read enable failed\n");
-			break;
-		}
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val &= 0b1110;//bit0
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit1
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		break;
-
-	case OUT_DVDD2:
-		//ultra ov8856 DVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d read enable failed\n");
-			break;
-		}
-
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val &= 0b1101;//bit1
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit1
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		break;
-
-	case OUT_AVDD1:
-		//wide&front&ultra imx686&imx596&ov8856 IOVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d read enable failed\n");
-			break;
-		}
-
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val &= 0b1011;//bit2
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit2
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		break;
-
-	case OUT_AVDD2:
-		//macro gc02m1 IOVDD
-		mutex_lock(&wl2866d_mutex);
-		ret = wl2866d_i2c_read(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d read enable failed\n");
-			break;
-		}
-
-		pr_err("wl2866d before set enable value = 0x%x\n", reg_val);
-		reg_val &= 0b0111;//bit3
-		pr_err("wl2866d after  set enable value = 0x%x\n", reg_val);
-
-		ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);//bit1
-		if (ret < 0) {
-			mutex_unlock(&wl2866d_mutex);
-			pr_err("wl2866d set enable failed\n");
-			break;
-		}
-		mutex_unlock(&wl2866d_mutex);
-		break;
-	default:
-		pr_err("wl2866d unknown camera!!!\n");
-		break;
-	}
-	//if wl2866 exit, xml powerUpSequence delayMs now mean delay time
-	wl2866_time_delay = DELAY_SETP * (out_delay);
-	if(MAX_DELAY_TIME < wl2866_time_delay) {
-		wl2866_time_delay = MAX_DELAY_TIME;
-	}
-	usleep_range(wl2866_time_delay , wl2866_time_delay + 100);
-	pr_err("wl2866d result = %d, wl2866d_iotype = %d, wl2866_time_delay is %d\n", ret, wl2866_iotype, wl2866_time_delay);
-	return ret;
+	return wl2866d_camera_set_output(out_iotype, out_delay, false);
 }
 EXPORT_SYMBOL(wl2866d_camera_power_down);
-
 
 static ssize_t wl2866d_vol_enable_show(struct device *dev,
 					struct device_attribute *attr,
@@ -632,26 +465,29 @@ int wl2866d_camera_power_up_eeprom(void)
 }
 EXPORT_SYMBOL(wl2866d_camera_power_up_eeprom);
 
+
 int wl2866d_camera_power_up_all(void)
 {
-    int ret = -1;
-    int i = 0;
-    if(camera_chip == NULL)
-    {
-        pr_err("wl2866d probe fail the camera_chip is NULL\n");
-        return ret;
-    }
+	int ret = 0, i;
 
-    for (i = 0 ; i <= POWER_UP_ALL_INDEX; i++){
-        ret = wl2866d_i2c_write(camera_chip, wl2866d_on_config[i].reg, wl2866d_on_config[i].value);
-        if (ret < 0) {
-            pr_err("wl2866d init voltage failed\n");
-            return ret;
-        }
-    }
+	mutex_lock(&wl2866d_mutex);
+	if (!camera_chip) {
+		ret = -ENODEV;
+		goto unlock;
+	}
 
-    clear_use_count(1);
-    return ret;
+	for (i = 0; i <= POWER_UP_ALL_INDEX; i++) {
+		ret = wl2866d_i2c_write(camera_chip,
+			wl2866d_on_config[i].reg,
+			wl2866d_on_config[i].value);
+		if (ret < 0)
+			goto unlock;
+	}
+	/* Xiaomi EEPROM helper intentionally enables all four rails. */
+	clear_use_count(1);
+unlock:
+	mutex_unlock(&wl2866d_mutex);
+	return ret;
 }
 EXPORT_SYMBOL(wl2866d_camera_power_up_all);
 
@@ -879,7 +715,7 @@ static int wl2866d_probe(struct i2c_client *client,
 	struct wl2866d_chip *chip;
 
 	pr_err("%s,enrty\n", __func__);
-	mutex_init(&wl2866d_mutex);
+	/* The mutex is static: valid before probe and after remove. */
 	chip = devm_kzalloc(&client->dev, sizeof(struct wl2866d_chip), GFP_KERNEL);
 	if (!chip) {
 		ret = -ENOMEM;
@@ -929,7 +765,9 @@ static int wl2866d_probe(struct i2c_client *client,
 		goto err_sysfs;
 	}
 
+	mutex_lock(&wl2866d_mutex);
 	camera_chip = chip;
+	mutex_unlock(&wl2866d_mutex);
 
 	pr_err("%s,successfully\n", __func__);
 	return 0;
@@ -949,8 +787,15 @@ static int wl2866d_remove(struct i2c_client *client)
 {
 	struct wl2866d_chip *chip = i2c_get_clientdata(client);
 
-	devm_kfree(chip->dev, chip);
-	chip = NULL;
+	/* Power APIs cannot access a devm-freed chip after I2C unbind. */
+	mutex_lock(&wl2866d_mutex);
+	if (camera_chip == chip)
+		camera_chip = NULL;
+	clear_use_count(0);
+	mutex_unlock(&wl2866d_mutex);
+
+	sysfs_remove_group(&client->dev.kobj, &wl2866d_attribute_group);
+	/* devm owns chip and its acquired regulators; no manual devm_kfree. */
 	return 0;
 }
 
