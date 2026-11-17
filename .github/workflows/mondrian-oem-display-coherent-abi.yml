@@ -26,6 +26,7 @@ jobs:
           python3 tools/verify_official_qualcomm_display.py
           python3 -m unittest discover -s tests -p 'test_mondrian_dsc_bounds.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_lhbm_panel_lifecycle.py' -v
+          python3 -m unittest discover -s tests -p 'test_mondrian_wl2866d_power.py' -v
           # Run the exact native C state machine as a host regression test.
           # This does not perform DSI hardware IO or certify a panel.
           cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
@@ -143,6 +144,21 @@ jobs:
           make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 vmlinux Image modules \
             2>&1 | tee "$RUNNER_TEMP/oem-base-kernel.log"
           test -s "$RUNNER_TEMP/mondrian-out/Module.symvers"
+      - name: Verify compiled Xiaomi WL2866D Camera power module and symbol ABI
+        run: |
+          set -euo pipefail
+          module="$RUNNER_TEMP/mondrian-out/drivers/misc/wl2866d.ko"
+          test -s "$module"
+          test "$(modinfo -F name "$module")" = wl2866d
+          test "$(modinfo -F vermagic "$module" | cut -d' ' -f1)" = 5.10.81
+          for symbol in wl2866d_camera_power_up wl2866d_camera_power_down \
+              wl2866d_camera_power_up_all wl2866d_camera_power_up_eeprom; do
+            grep -Eq "^[^[:space:]]+[[:space:]]+$symbol[[:space:]]" \
+              "$RUNNER_TEMP/mondrian-out/Module.symvers"
+            nm -P "$module" | grep -Eq "^$symbol[[:space:]]+T[[:space:]]"
+          done
+          echo '[PASS] OEM WL2866D compiled and exported matching Camera rail symbols' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] Sensor rails, suspend/resume and on-device Camera/LHBM' >> "$GITHUB_STEP_SUMMARY"
       - name: Build already-qualified official MMRM against the same OEM ABI
         run: |
           set -euo pipefail
