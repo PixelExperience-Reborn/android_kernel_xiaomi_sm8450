@@ -27,6 +27,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_mondrian_dsc_bounds.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_lhbm_panel_lifecycle.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_wl2866d_power.py' -v
+          python3 -m unittest discover -s tests -p 'test_mondrian_wl2866d_abi.py' -v
           # Run the exact native C state machine as a host regression test.
           # This does not perform DSI hardware IO or certify a panel.
           cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
@@ -147,18 +148,16 @@ jobs:
       - name: Verify compiled Xiaomi WL2866D Camera power module and symbol ABI
         run: |
           set -euo pipefail
-          module="$RUNNER_TEMP/mondrian-out/drivers/misc/wl2866d.ko"
-          test -s "$module"
-          test "$(modinfo -F name "$module")" = wl2866d
-          test "$(modinfo -F vermagic "$module" | cut -d' ' -f1)" = 5.10.81
-          for symbol in wl2866d_camera_power_up wl2866d_camera_power_down \
-              wl2866d_camera_power_up_all wl2866d_camera_power_up_eeprom; do
-            grep -Eq "^[^[:space:]]+[[:space:]]+$symbol[[:space:]]" \
-              "$RUNNER_TEMP/mondrian-out/Module.symvers"
-            nm -P "$module" | grep -Eq "^$symbol[[:space:]]+T[[:space:]]"
-          done
-          echo '[PASS] OEM WL2866D compiled and exported matching Camera rail symbols' >> "$GITHUB_STEP_SUMMARY"
-          echo '[PENDING] Sensor rails, suspend/resume and on-device Camera/LHBM' >> "$GITHUB_STEP_SUMMARY"
+          export PATH=/tmp/google-clang/clang-r614150/bin:$PATH
+          export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+          python3 kernel/tools/verify_mondrian_wl2866d_abi.py \
+            --kernel kernel \
+            --kernel-out "$RUNNER_TEMP/mondrian-out" \
+            --module "$RUNNER_TEMP/mondrian-out/drivers/misc/wl2866d.ko" \
+            --expected-kernel-commit "$GITHUB_SHA" \
+            --out "$RUNNER_TEMP/wl2866d-abi-evidence.json"
+          echo '[PASS] OEM WL2866D ELF exports and exact Kbuild kernelrelease/vermagic' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] Mondrian sensor rails and Camera/LHBM physical testing' >> "$GITHUB_STEP_SUMMARY"
       - name: Build already-qualified official MMRM against the same OEM ABI
         run: |
           set -euo pipefail
@@ -214,3 +213,4 @@ jobs:
             ${{ runner.temp }}/display-object-build.log
             ${{ runner.temp }}/qualcomm-msm-drm-build.log
             ${{ runner.temp }}/display-abi-evidence.json
+            ${{ runner.temp }}/wl2866d-abi-evidence.json
