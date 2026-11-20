@@ -25,8 +25,7 @@
 /* Xiaomi Camera sensor power sequence IDs are 13..16 (four WL2866D rails). */
 #define WL2866D_FIRST_POWER_SEQ 13
 
-struct wl2866d_chip *camera_chip;
-struct wl2866d_voltage output_vol;
+static struct wl2866d_chip *camera_chip;
 
 static const struct  wl2866d_map  wl2866d_on_config[] = {
 	{0x03, 0x54},
@@ -39,7 +38,8 @@ static const struct  wl2866d_map  wl2866d_on_config[] = {
 	{0x02, 0x00},
 };
 
-static atomic_t wl2866d_use_count[LAST_POWER_CH+1];
+/* Total votes on each output, including one per all-rail user. */
+static atomic_t wl2866d_use_count[LAST_POWER_CH + 1];
 
 static DEFINE_MUTEX(wl2866d_mutex);
 
@@ -87,29 +87,50 @@ static int wl2866d_i2c_read(struct wl2866d_chip *chip,
 	return ret;
 }
 
-void clear_use_count(int val)
+static void clear_use_count(void)
 {
-	int i = 0;
-	for (i = 0 ; i < ARRAY_SIZE(wl2866d_use_count); i++){
-		atomic_set(&wl2866d_use_count[i], val);
-	}
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(wl2866d_use_count); i++)
+		atomic_set(&wl2866d_use_count[i], 0);
 }
 
 
 int wl2866d_camera_power_down_all(void)
 {
-	int ret;
+	unsigned char mask, next;
+	int i, ret;
 
 	mutex_lock(&wl2866d_mutex);
-	if (!camera_chip) {
+	if (!camera_chip || camera_chip->suspended) {
 		ret = -ENODEV;
 		goto unlock;
 	}
 
-	ret = wl2866d_i2c_write(camera_chip,
-				wl2866d_on_config[VOL_ENABLE].reg, 0);
-	if (ret >= 0)
-		clear_use_count(0);
+	if (!camera_chip->all_rail_users) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+	if (camera_chip->all_rail_users == 1) {
+		ret = wl2866d_i2c_read(camera_chip,
+				       wl2866d_on_config[VOL_ENABLE].reg, &mask);
+		if (ret < 0)
+			goto unlock;
+		next = mask;
+		for (i = 0; i <= LAST_POWER_CH; i++)
+			if (atomic_read(&wl2866d_use_count[i]) == 1)
+				next &= ~BIT(i);
+		if (next != mask) {
+			ret = wl2866d_i2c_write(camera_chip,
+					wl2866d_on_config[VOL_ENABLE].reg, next);
+			if (ret < 0)
+				goto unlock;
+		}
+	}
+	for (i = 0; i <= LAST_POWER_CH; i++)
+		atomic_dec(&wl2866d_use_count[i]);
+	camera_chip->all_rail_users--;
+	ret = 0;
 unlock:
 	mutex_unlock(&wl2866d_mutex);
 	return ret;
@@ -123,7 +144,7 @@ unlock:
  */
 static int wl2866d_camera_set_output(int out_iotype, int out_delay, bool enable)
 {
-	unsigned char reg_val, voltage = 0;
+	unsigned char reg_val;
 	unsigned int delay_us;
 	int channel, users, ret;
 
@@ -140,7 +161,7 @@ static int wl2866d_camera_set_output(int out_iotype, int out_delay, bool enable)
 		delay_us = (unsigned int)out_delay * DELAY_SETP;
 
 	mutex_lock(&wl2866d_mutex);
-	if (!camera_chip) {
+	if (!camera_chip || camera_chip->suspended) {
 		ret = -ENODEV;
 		goto unlock;
 	}
@@ -157,30 +178,12 @@ static int wl2866d_camera_set_output(int out_iotype, int out_delay, bool enable)
 			goto unlock;
 		}
 
-		switch (channel) {
-		case OUT_DVDD1:
-			voltage = output_vol.dvdd1;
-			break;
-		case OUT_DVDD2:
-			voltage = output_vol.dvdd2;
-			break;
-		case OUT_AVDD1:
-			voltage = output_vol.avdd1;
-			break;
-		case OUT_AVDD2:
-			voltage = output_vol.avdd2;
-			break;
-		default:
-			ret = -EINVAL;
-			goto unlock;
-		}
-
 		ret = wl2866d_i2c_write(camera_chip,
-			wl2866d_on_config[channel].reg, voltage);
+			wl2866d_on_config[channel].reg, camera_chip->voltage[channel]);
 		if (ret < 0)
 			goto unlock;
 	} else {
-		if (users <= 0) {
+		if (users <= camera_chip->all_rail_users) {
 			ret = -EINVAL;
 			goto unlock;
 		}
@@ -229,167 +232,116 @@ int wl2866d_camera_power_down(int out_iotype, int out_delay)
 }
 EXPORT_SYMBOL(wl2866d_camera_power_down);
 
-static ssize_t wl2866d_vol_enable_show(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
+static ssize_t wl2866d_show_register(struct device *dev, int id, char *buf)
 {
 	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-	unsigned char reg_val = 0;
+	u8 value;
+	int ret;
 
-	wl2866d_i2c_read(chip, wl2866d_on_config[VOL_ENABLE].reg, &reg_val);
-	return snprintf(buf, 10, "%d\n", reg_val);
+	mutex_lock(&wl2866d_mutex);
+	if (chip != camera_chip || chip->suspended)
+		ret = -ENODEV;
+	else
+		ret = wl2866d_i2c_read(chip, wl2866d_on_config[id].reg, &value);
+	mutex_unlock(&wl2866d_mutex);
+	if (ret < 0)
+		return ret;
+	return sysfs_emit(buf, "%u\n", value);
+}
 
+static ssize_t wl2866d_store_register(struct device *dev, int id,
+				     const char *buf, size_t count)
+{
+	struct wl2866d_chip *chip = dev_get_drvdata(dev);
+	u8 value;
+	int i, ret;
+
+	ret = kstrtou8(buf, 0, &value);
+	if (ret)
+		return ret;
+	mutex_lock(&wl2866d_mutex);
+	if (chip != camera_chip || chip->suspended) {
+		ret = -ENODEV;
+		goto out;
+	}
+	for (i = 0; i <= LAST_POWER_CH; i++) {
+		if ((id == i || id == VOL_ENABLE) &&
+		    atomic_read(&wl2866d_use_count[i])) {
+			ret = -EBUSY;
+			goto out;
+		}
+	}
+	ret = wl2866d_i2c_write(chip, wl2866d_on_config[id].reg, value);
+out:
+	mutex_unlock(&wl2866d_mutex);
+	if (ret < 0)
+		return ret;
+	return count;
+}
+
+static ssize_t wl2866d_vol_enable_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	return wl2866d_show_register(dev, VOL_ENABLE, buf);
 }
 
 static ssize_t wl2866d_vol_enable_store(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t count)
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
 {
-	int ret = 0;
-	unsigned char reg_val = 0;
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-
-	ret = kstrtou8(buf, 0, &reg_val);
-	if (ret < 0)
-		return ret;
-
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[VOL_ENABLE].reg, reg_val);
-	if (ret < 0) {
-		pr_err("wl2866d set enable failed\n");
-		return ret;
-	}
-	return count;
+	return wl2866d_store_register(dev, VOL_ENABLE, buf, count);
 }
 
-
 static ssize_t wl2866d_out_avdd2_show(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
+				     struct device_attribute *attr, char *buf)
 {
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-	unsigned char reg_val = 0;
-
-	wl2866d_i2c_read(chip, wl2866d_on_config[OUT_AVDD2].reg, &reg_val);
-	return snprintf(buf, 10, "%d\n", reg_val);
-
+	return wl2866d_show_register(dev, OUT_AVDD2, buf);
 }
 
 static ssize_t wl2866d_out_avdd2_store(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t count)
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
 {
-	int ret = 0;
-	unsigned char reg_val = 0;
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-
-	ret = kstrtou8(buf, 0, &reg_val);
-	if (ret < 0)
-		return ret;
-
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[OUT_AVDD2].reg, reg_val);
-	if (ret < 0) {
-		pr_err("wl2866d open avdd2 failed\n");
-		return ret;
-	}
-	return count;
+	return wl2866d_store_register(dev, OUT_AVDD2, buf, count);
 }
 
-
 static ssize_t wl2866d_out_avdd1_show(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
+				     struct device_attribute *attr, char *buf)
 {
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-	unsigned char reg_val = 0;
-
-	wl2866d_i2c_read(chip, wl2866d_on_config[OUT_AVDD1].reg, &reg_val);
-	return snprintf(buf, 10, "%d\n", reg_val);
-
+	return wl2866d_show_register(dev, OUT_AVDD1, buf);
 }
 
 static ssize_t wl2866d_out_avdd1_store(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t count)
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
 {
-	int ret = 0;
-	unsigned char reg_val = 0;
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-
-	ret = kstrtou8(buf, 0, &reg_val);
-	if (ret < 0)
-		return ret;
-
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[OUT_AVDD1].reg, reg_val);
-	if (ret < 0)	{
-		pr_err("wl2866d open avdd1 failed\n");
-		return ret;
-	}
-	return count;
+	return wl2866d_store_register(dev, OUT_AVDD1, buf, count);
 }
 
-
 static ssize_t wl2866d_out_dvdd2_show(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
+				     struct device_attribute *attr, char *buf)
 {
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-	unsigned char reg_val = 0;
-
-	wl2866d_i2c_read(chip, wl2866d_on_config[OUT_DVDD2].reg, &reg_val);
-	return snprintf(buf, 10, "%d\n", reg_val);
-
+	return wl2866d_show_register(dev, OUT_DVDD2, buf);
 }
 
 static ssize_t wl2866d_out_dvdd2_store(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t count)
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
 {
-	int ret = 0;
-	unsigned char reg_val = 0;
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-
-	ret = kstrtou8(buf, 0, &reg_val);
-	if (ret < 0)
-		return ret;
-
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[OUT_DVDD2].reg, reg_val);
-	if (ret < 0)	{
-		pr_err("wl2866d open dvdd2 failed\n");
-		return ret;
-	}
-	return count;
+	return wl2866d_store_register(dev, OUT_DVDD2, buf, count);
 }
 
-
 static ssize_t wl2866d_out_dvdd1_show(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
+				     struct device_attribute *attr, char *buf)
 {
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-	unsigned char reg_val = 0;
-
-	wl2866d_i2c_read(chip, wl2866d_on_config[OUT_DVDD1].reg, &reg_val);
-	return snprintf(buf, 10, "%d\n", reg_val);
-
+	return wl2866d_show_register(dev, OUT_DVDD1, buf);
 }
 
 static ssize_t wl2866d_out_dvdd1_store(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t count)
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
 {
-	int ret = 0;
-	unsigned char reg_val = 0;
-	struct wl2866d_chip *chip = dev_get_drvdata(dev);
-
-	ret = kstrtou8(buf, 0, &reg_val);
-	if (ret < 0)
-		return ret;
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[OUT_DVDD1].reg, reg_val);
-	if (ret < 0)	{
-		pr_err("wl2866d open dvdd1 failed\n");
-		return ret;
-	}
-	return count;
+	return wl2866d_store_register(dev, OUT_DVDD1, buf, count);
 }
 
 static DEVICE_ATTR(vol_enable, 0664, wl2866d_vol_enable_show, wl2866d_vol_enable_store);
@@ -413,78 +365,87 @@ static struct attribute_group wl2866d_attribute_group = {
 
 
 
-static int wl2866d_get_id(struct  wl2866d_chip *chip)
+static int wl2866d_get_id(struct wl2866d_chip *chip)
 {
-	unsigned char reg_val = 0;
-	int ret = 0;
+	u8 value;
+	int ret = wl2866d_i2c_read(chip, wl2866d_on_config[OUT_DVDD1].reg,
+				   &value);
 
-	wl2866d_i2c_read(chip, wl2866d_on_config[OUT_DVDD1].reg, &reg_val);
-	pr_err("%s:wl2866d id is %d\n", __func__, reg_val);
-
-	if ((reg_val != WL2866D_ID) && (reg_val != WL2866D_ID1)) {
-		ret = -1;
+	if (ret < 0)
 		return ret;
-	}
+	if (value != WL2866D_ID && value != WL2866D_ID1)
+		return -ENODEV;
 	return 0;
 }
 
 static int set_init_voltage(struct wl2866d_chip *chip)
 {
-	int ret = 0;
-	int i;
+	int i, ret;
 
-	//set default voltage
-	for (i = 0 ; i <= LAST_POWER_CH; i++){
-		ret = wl2866d_i2c_write(chip, wl2866d_on_config[i].reg, wl2866d_on_config[i].value);
-		if (ret < 0) {
-			pr_err("wl2866d init voltage failed\n");
+	ret = wl2866d_i2c_write(chip, wl2866d_on_config[VOL_DISABLE].reg,
+				wl2866d_on_config[VOL_DISABLE].value);
+	if (ret < 0)
+		return ret;
+	for (i = 0; i <= LAST_POWER_CH; i++) {
+		ret = wl2866d_i2c_write(chip, wl2866d_on_config[i].reg,
+					chip->voltage[i]);
+		if (ret < 0)
 			return ret;
-		}
 	}
-
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[VOL_DISABLE].reg, wl2866d_on_config[VOL_DISABLE].value);
-	if (ret < 0) {
-		pr_err("wl2866d  dischager function enable failed\n");
-		return ret;
-	}
-	//enable dischager function
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[DISCHARGE_ENABLE].reg, wl2866d_on_config[DISCHARGE_ENABLE].value);
-	if (ret < 0) {
-		pr_err("wl2866d  dischager function enable failed\n");
-		return ret;
-	}
-	clear_use_count(0);
-	return ret;
+	return wl2866d_i2c_write(chip, wl2866d_on_config[DISCHARGE_ENABLE].reg,
+				 wl2866d_on_config[DISCHARGE_ENABLE].value);
 }
 
 int wl2866d_camera_power_up_eeprom(void)
 {
-    int ret = -1;
-    ret = wl2866d_camera_power_up_all();
-    return ret;
+	return wl2866d_camera_power_up_all();
 }
 EXPORT_SYMBOL(wl2866d_camera_power_up_eeprom);
 
 
 int wl2866d_camera_power_up_all(void)
 {
-	int ret = 0, i;
+	unsigned char mask, next;
+	int ret, i;
 
 	mutex_lock(&wl2866d_mutex);
-	if (!camera_chip) {
+	if (!camera_chip || camera_chip->suspended) {
 		ret = -ENODEV;
 		goto unlock;
 	}
 
-	for (i = 0; i <= POWER_UP_ALL_INDEX; i++) {
-		ret = wl2866d_i2c_write(camera_chip,
-			wl2866d_on_config[i].reg,
-			wl2866d_on_config[i].value);
+	for (i = 0; i <= LAST_POWER_CH; i++) {
+		if (atomic_read(&wl2866d_use_count[i]) == INT_MAX) {
+			ret = -EOVERFLOW;
+			goto unlock;
+		}
+	}
+	if (!camera_chip->all_rail_users) {
+		ret = wl2866d_i2c_read(camera_chip,
+				       wl2866d_on_config[VOL_ENABLE].reg, &mask);
 		if (ret < 0)
 			goto unlock;
+		next = mask;
+		for (i = 0; i <= LAST_POWER_CH; i++) {
+			next |= BIT(i);
+			if (atomic_read(&wl2866d_use_count[i]))
+				continue;
+			ret = wl2866d_i2c_write(camera_chip,
+					wl2866d_on_config[i].reg, camera_chip->voltage[i]);
+			if (ret < 0)
+				goto unlock;
+		}
+		if (next != mask) {
+			ret = wl2866d_i2c_write(camera_chip,
+					wl2866d_on_config[VOL_ENABLE].reg, next);
+			if (ret < 0)
+				goto unlock;
+		}
 	}
-	/* Xiaomi EEPROM helper intentionally enables all four rails. */
-	clear_use_count(1);
+	for (i = 0; i <= LAST_POWER_CH; i++)
+		atomic_inc(&wl2866d_use_count[i]);
+	camera_chip->all_rail_users++;
+	ret = 0;
 unlock:
 	mutex_unlock(&wl2866d_mutex);
 	return ret;
@@ -493,9 +454,7 @@ EXPORT_SYMBOL(wl2866d_camera_power_up_all);
 
 int wl2866d_camera_power_down_eeprom(void)
 {
-    int ret = -1;
-    ret = wl2866d_camera_power_down_all();
-    return ret;
+	return wl2866d_camera_power_down_all();
 }
 EXPORT_SYMBOL(wl2866d_camera_power_down_eeprom);
 
@@ -520,7 +479,7 @@ static int wl2866d_init(struct  wl2866d_chip *chip)
 	if (!gpio_is_valid(chip->en_gpio)) {
 		pr_err("%s:%d, en gpio not specified\n",
 						__func__, __LINE__);
-		return -EINVAL;
+		return chip->en_gpio < 0 ? chip->en_gpio : -EINVAL;
 	}
 
 	pr_err("%s: en_gpio is %d\n", __func__, chip->en_gpio);
@@ -561,73 +520,48 @@ static int wl2866d_init(struct  wl2866d_chip *chip)
 }
 
 
-static int wl2866d_disable_power(struct  wl2866d_chip *chip)
+static int wl2866d_disable_power(struct wl2866d_chip *chip)
 {
-	int ret = 0;
+	struct regulator_bulk_data inputs[] = {
+		{ .supply = "vin1", .consumer = chip->vin1 },
+		{ .supply = "vin2", .consumer = chip->vin2 },
+	};
+	int ret;
 
-	ret = regulator_disable(chip->vin1);
+	ret = regulator_bulk_disable(ARRAY_SIZE(inputs), inputs);
 	if (ret)
-		dev_err(chip->dev, "Unable to disable vin1:%d\n", ret);
-
-	if (!regulator_is_enabled(chip->vin1)) {
-		ret = regulator_set_voltage(chip->vin1, 0,
-					VIN1_1P35_VOL_MAX);
-		if (ret)
-			dev_err(chip->dev,
-				"Unable to set (0) voltage for vin1:%d\n", ret);
-	}
-
-	ret = regulator_disable(chip->vin2);
-	if (ret)
-		dev_err(chip->dev, "Unable to disable vin2:%d\n", ret);
-
-	if (!regulator_is_enabled(chip->vin2)) {
-		ret = regulator_set_voltage(chip->vin2, 0,
-					VIN2_3P3_VOL_MAX);
-		if (ret)
-			dev_err(chip->dev,
-				"Unable to set (0) voltage for vin2:%d\n", ret);
-	}
+		return ret;
+	if (regulator_set_voltage(chip->vin2, 0, INT_MAX))
+		dev_warn(chip->dev, "Unable to release vin2 voltage vote\n");
+	if (regulator_set_voltage(chip->vin1, 0, INT_MAX))
+		dev_warn(chip->dev, "Unable to release vin1 voltage vote\n");
 	return 0;
-
 }
-
-
 
 static int wl2866d_enable_power(struct wl2866d_chip *chip)
 {
-	int ret, failure;
+	int ret;
 
-	ret = regulator_set_voltage(chip->vin1, VIN1_1P35_VOL_MIN,
-				    VIN1_1P35_VOL_MAX);
+	ret = regulator_set_voltage(chip->vin1, chip->vin1_uv[0], chip->vin1_uv[1]);
 	if (ret)
 		return ret;
-
 	ret = regulator_enable(chip->vin1);
 	if (ret)
 		goto reset_vin1;
 
-	ret = regulator_set_voltage(chip->vin2, VIN2_3P3_VOL_MIN,
-				    VIN2_3P3_VOL_MAX);
+	ret = regulator_set_voltage(chip->vin2, chip->vin2_uv[0], chip->vin2_uv[1]);
 	if (ret)
 		goto disable_vin1;
-
 	ret = regulator_enable(chip->vin2);
 	if (!ret)
 		return 0;
 
-	/* Unwind both regulators without replacing the original failure. */
-	failure = ret;
-	regulator_set_voltage(chip->vin2, 0, VIN2_3P3_VOL_MAX);
-	ret = failure;
+	regulator_set_voltage(chip->vin2, 0, INT_MAX);
 disable_vin1:
-	failure = ret;
 	regulator_disable(chip->vin1);
-	ret = failure;
 reset_vin1:
-	failure = ret;
-	regulator_set_voltage(chip->vin1, 0, VIN1_1P35_VOL_MAX);
-	return failure;
+	regulator_set_voltage(chip->vin1, 0, INT_MAX);
+	return ret;
 }
 
 static int wl2866d_vreg_init(struct  wl2866d_chip *chip)
@@ -658,38 +592,52 @@ err_vin1:
 	return ret;
 }
 
-static int wl2866d_voltage_init(struct  wl2866d_chip *chip)
+static int wl2866d_read_supply_range(struct device_node *node, const char *name,
+				     u32 range[2], u32 fallback_min, u32 fallback_max)
 {
-	int ret = 0;
+	int ret;
 
-	ret = of_property_read_u8(chip->dev->of_node, "avdd1", &output_vol.avdd1);
+	range[0] = fallback_min;
+	range[1] = fallback_max;
+	if (!of_find_property(node, name, NULL))
+		return 0;
 
-	if (ret < 0) {
-		output_vol.avdd1 = wl2866d_on_config[OUT_AVDD1].value;
-	}
-
-	ret = of_property_read_u8(chip->dev->of_node, "avdd2", &output_vol.avdd2);
-
-	if (ret < 0) {
-		output_vol.avdd2 = wl2866d_on_config[OUT_AVDD2].value;
-	}
-
-	ret = of_property_read_u8(chip->dev->of_node, "dvdd1", &output_vol.dvdd1);
-
-	if (ret < 0) {
-		output_vol.dvdd1 = wl2866d_on_config[OUT_DVDD1].value;
-	}
-
-	ret = of_property_read_u8(chip->dev->of_node, "dvdd2", &output_vol.dvdd2);
-
-	if (ret < 0) {
-		output_vol.dvdd2 = wl2866d_on_config[OUT_DVDD2].value;
-		}
-
-	pr_err("wl2866d output voltage, avdd1:0x%x, avdd2:0x%x, dvdd1:0x%x, dvdd2:0x%x\n",
-			output_vol.avdd1, output_vol.avdd2, output_vol.dvdd1, output_vol.dvdd2);
-
+	if (of_property_count_u32_elems(node, name) != 2)
+		return -EINVAL;
+	ret = of_property_read_u32_array(node, name, range, 2);
+	if (ret)
+		return ret;
+	if (!range[0] || range[0] > range[1] || range[1] > INT_MAX)
+		return -EINVAL;
 	return 0;
+}
+
+static int wl2866d_voltage_init(struct wl2866d_chip *chip)
+{
+	static const char * const names[] = {
+		[OUT_DVDD1] = "dvdd1",
+		[OUT_DVDD2] = "dvdd2",
+		[OUT_AVDD1] = "avdd1",
+		[OUT_AVDD2] = "avdd2",
+	};
+	struct device_node *node = chip->dev->of_node;
+	int i, ret;
+
+	for (i = 0; i < ARRAY_SIZE(names); i++) {
+		chip->voltage[i] = wl2866d_on_config[i].value;
+		if (!of_find_property(node, names[i], NULL))
+			continue;
+		ret = of_property_read_u8(node, names[i], &chip->voltage[i]);
+		if (ret)
+			return ret;
+	}
+
+	ret = wl2866d_read_supply_range(node, "vin1-voltage-level", chip->vin1_uv,
+					VIN1_1P35_VOL_MIN, VIN1_1P35_VOL_MAX);
+	if (ret)
+		return ret;
+	return wl2866d_read_supply_range(node, "vin2-voltage-level", chip->vin2_uv,
+					 VIN2_3P3_VOL_MIN, VIN2_3P3_VOL_MAX);
 }
 
 static int wl2866d_probe(struct i2c_client *client,
@@ -702,7 +650,7 @@ static int wl2866d_probe(struct i2c_client *client,
 	if (!chip)
 		return -ENOMEM;
 
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_SMBUS_BYTE_DATA))
 		return -EIO;
 
 	chip->client = client;
@@ -736,7 +684,7 @@ static int wl2866d_probe(struct i2c_client *client,
 		ret = -EBUSY;
 	} else {
 		camera_chip = chip;
-		clear_use_count(0);
+		clear_use_count();
 	}
 	mutex_unlock(&wl2866d_mutex);
 	if (ret) {
@@ -762,11 +710,12 @@ static int wl2866d_remove(struct i2c_client *client)
 	mutex_lock(&wl2866d_mutex);
 	if (camera_chip == chip)
 		camera_chip = NULL;
-	clear_use_count(0);
+	clear_use_count();
 	mutex_unlock(&wl2866d_mutex);
 
 	sysfs_remove_group(&client->dev.kobj, &wl2866d_attribute_group);
-	wl2866d_disable_power(chip);
+	if (!chip->suspended)
+		wl2866d_disable_power(chip);
 	/* devm owns chip and its acquired regulators; no manual devm_kfree. */
 	return 0;
 }
@@ -774,36 +723,52 @@ static int wl2866d_remove(struct i2c_client *client)
 #ifdef CONFIG_PM_SLEEP
 static int wl2866d_suspend(struct device *dev)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct wl2866d_chip *chip = i2c_get_clientdata(client);
-	int ret = 0;
+	struct wl2866d_chip *chip = dev_get_drvdata(dev);
+	int i, ret = 0;
 
-	pr_err("%s\n", __func__);
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[VOL_DISABLE].reg, wl2866d_on_config[VOL_DISABLE].value);
-	if (ret < 0)
-	   pr_err("wl2866d close voltage failed\n");
-
-	wl2866d_disable_power(chip);
-	return 0;
+	mutex_lock(&wl2866d_mutex);
+	if (chip->suspended)
+		goto out;
+	for (i = 0; i <= LAST_POWER_CH; i++) {
+		if (atomic_read(&wl2866d_use_count[i])) {
+			ret = -EBUSY;
+			goto out;
+		}
+	}
+	ret = wl2866d_i2c_write(chip, wl2866d_on_config[VOL_DISABLE].reg, 0);
+	if (ret >= 0) {
+		ret = wl2866d_disable_power(chip);
+		if (!ret)
+			chip->suspended = true;
+	}
+out:
+	mutex_unlock(&wl2866d_mutex);
+	return ret;
 }
 
 static int wl2866d_resume(struct device *dev)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct wl2866d_chip *chip = i2c_get_clientdata(client);
-	//int ret = 0;
+	struct wl2866d_chip *chip = dev_get_drvdata(dev);
+	int ret = 0;
 
-	pr_err("%s\n", __func__);
-	wl2866d_enable_power(chip);
-	gpio_direction_output(chip->en_gpio, 0);
-	/*
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[VOL_ENABLE].reg, wl2866d_on_config[VOL_ENABLE].value);
-	if (ret < 0) {
-		pr_err("wl2866d set enable failed\n");
-		return ret;
+	mutex_lock(&wl2866d_mutex);
+	if (!chip->suspended)
+		goto out;
+	ret = wl2866d_enable_power(chip);
+	if (ret)
+		goto out;
+	ret = gpio_direction_output(chip->en_gpio, 0);
+	if (!ret) {
+		msleep(10);
+		ret = set_init_voltage(chip);
 	}
-	*/
-	return 0;
+	if (ret < 0)
+		wl2866d_disable_power(chip);
+	else
+		chip->suspended = false;
+out:
+	mutex_unlock(&wl2866d_mutex);
+	return ret;
 }
 #endif
 

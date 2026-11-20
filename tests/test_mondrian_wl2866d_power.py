@@ -53,7 +53,7 @@ class XiaomiWL2866DPowerTests(unittest.TestCase):
         self.assertLess(assert_good, set_ref)
         self.assertIn("atomic_inc(&wl2866d_use_count[channel]);", power)
         self.assertIn("atomic_dec(&wl2866d_use_count[channel]);", power)
-        self.assertIn("if (users <= 0)", power)
+        self.assertIn("if (users <= camera_chip->all_rail_users)", power)
         self.assertIn("if (users == INT_MAX)", power)
 
     def test_one_lock_covers_full_smbus_read_modify_write(self):
@@ -79,10 +79,15 @@ class XiaomiWL2866DPowerTests(unittest.TestCase):
                        "static int wl2866d_camera_set_output(")
         up = section("int wl2866d_camera_power_up_all(void)",
                      "EXPORT_SYMBOL(wl2866d_camera_power_up_all)")
-        self.assertIn("if (!camera_chip)", down)
-        self.assertIn("if (!camera_chip)", up)
-        self.assertIn("if (ret >= 0)\n\t\tclear_use_count(0)", down)
-        self.assertIn("clear_use_count(1)", up)
+        for body in (up, down):
+            self.assertIn("if (!camera_chip || camera_chip->suspended)", body)
+            self.assertNotIn("clear_use_count(", body)
+        self.assertIn("if (!camera_chip->all_rail_users)", down)
+        self.assertIn("if (atomic_read(&wl2866d_use_count[i]) == 1)", down)
+        for body, update in ((up, "atomic_inc"), (down, "atomic_dec")):
+            write = body.rindex("wl2866d_i2c_write(")
+            self.assertLess(body.index("if (ret < 0)", write),
+                            body.index(update + "(&wl2866d_use_count[i])"))
 
     def test_oem_sysfs_dvdd2_targets_its_own_regulator(self):
         # Xiaomi exposes DVDD1 on reg 0x03 and DVDD2 on 0x04.
@@ -93,8 +98,8 @@ class XiaomiWL2866DPowerTests(unittest.TestCase):
             with self.subTest(handler=name):
                 body = section("static ssize_t " + name + "(",
                                "static ssize_t " + next_name + "(")
-                self.assertIn("wl2866d_on_config[OUT_DVDD2].reg", body)
-                self.assertNotIn("wl2866d_on_config[OUT_DVDD1].reg", body)
+                self.assertIn("(dev, OUT_DVDD2, buf", body)
+                self.assertNotIn("OUT_DVDD1", body)
         self.assertIn('{0x03, 0x54}', SRC)
         self.assertIn('{0x04, 0x64}', SRC)
 
