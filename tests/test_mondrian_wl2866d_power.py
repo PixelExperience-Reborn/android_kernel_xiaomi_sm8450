@@ -84,6 +84,20 @@ class XiaomiWL2866DPowerTests(unittest.TestCase):
         self.assertIn("if (ret >= 0)\n\t\tclear_use_count(0)", down)
         self.assertIn("clear_use_count(1)", up)
 
+    def test_oem_sysfs_dvdd2_targets_its_own_regulator(self):
+        # Xiaomi exposes DVDD1 on reg 0x03 and DVDD2 on 0x04.
+        # Both legacy show/store handlers previously addressed DVDD1.
+        for name, next_name in (
+                ("wl2866d_out_dvdd2_show", "wl2866d_out_dvdd2_store"),
+                ("wl2866d_out_dvdd2_store", "wl2866d_out_dvdd1_show")):
+            with self.subTest(handler=name):
+                body = section("static ssize_t " + name + "(",
+                               "static ssize_t " + next_name + "(")
+                self.assertIn("wl2866d_on_config[OUT_DVDD2].reg", body)
+                self.assertNotIn("wl2866d_on_config[OUT_DVDD1].reg", body)
+        self.assertIn('{0x03, 0x54}', SRC)
+        self.assertIn('{0x04, 0x64}', SRC)
+
     def test_probe_teardown_does_not_leave_stale_global_device(self):
         probe = section("static int wl2866d_probe(", "static int wl2866d_remove(")
         remove = section("static int wl2866d_remove(", "#ifdef CONFIG_PM_SLEEP")

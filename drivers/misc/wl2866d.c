@@ -335,7 +335,7 @@ static ssize_t wl2866d_out_dvdd2_show(struct device *dev,
 	struct wl2866d_chip *chip = dev_get_drvdata(dev);
 	unsigned char reg_val = 0;
 
-	wl2866d_i2c_read(chip, wl2866d_on_config[OUT_DVDD1].reg, &reg_val);
+	wl2866d_i2c_read(chip, wl2866d_on_config[OUT_DVDD2].reg, &reg_val);
 	return snprintf(buf, 10, "%d\n", reg_val);
 
 }
@@ -352,7 +352,7 @@ static ssize_t wl2866d_out_dvdd2_store(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	ret = wl2866d_i2c_write(chip, wl2866d_on_config[OUT_DVDD1].reg, reg_val);
+	ret = wl2866d_i2c_write(chip, wl2866d_on_config[OUT_DVDD2].reg, reg_val);
 	if (ret < 0)	{
 		pr_err("wl2866d open dvdd2 failed\n");
 		return ret;
