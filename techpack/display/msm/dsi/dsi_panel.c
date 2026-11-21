@@ -6,6 +6,7 @@
 
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 #include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
 #include <linux/msm_gpio.h>
@@ -66,6 +67,8 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 
 
 #ifdef CONFIG_ARCH_WAIPIO
+#define MONDRIAN_M11A_PANEL_ID 0x4d31314100420200ULL
+
 /*
  * Only called by the panel owner with panel_lock held. Until the exact
  * mondrian panel is factory-qualified, these are internal bookkeeping
@@ -527,6 +530,17 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	SDE_EVT32(type, state, count);
 
 	if (count == 0) {
+#ifdef CONFIG_ARCH_WAIPIO
+		u64 panel_id;
+
+		/* An invalid ON table otherwise looks like an optional empty set. */
+		if (type == DSI_CMD_SET_ON &&
+		    !of_property_read_u64(panel->panel_of_node, "mi,panel-id", &panel_id) &&
+		    panel_id == MONDRIAN_M11A_PANEL_ID) {
+			DSI_ERR("[%s] missing M11A panel-on commands\n", panel->name);
+			return -EINVAL;
+		}
+#endif
 		DSI_DEBUG("[%s] No commands to be sent for state(%d)\n",
 			 panel->name, type);
 		goto error;
