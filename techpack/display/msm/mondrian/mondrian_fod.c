@@ -50,7 +50,9 @@ struct mondrian_fod {
 struct m11a_client {
 	struct mondrian_fod *fod;
 	struct mutex read_lock;
-	u64 seen;
+	u64 seen, registration, partial_seq;
+	u32 partial_value;
+	size_t offset;
 	bool subscribed;
 };
 
@@ -332,6 +334,8 @@ static long fod_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		} else {
 			spin_lock(&f->events);
 			c->subscribed = cmd == MI_REGISTER;
+			c->registration++;
+			c->offset = 0;
 			c->seen = f->sequence - (c->subscribed && f->value ? 1 : 0);
 			spin_unlock(&f->events);
 			wake_up_interruptible(&f->wait);
@@ -360,7 +364,7 @@ static __poll_t event_state(struct m11a_client *c)
 	spin_lock(&f->events);
 	if (f->dead)
 		mask = EPOLLHUP | EPOLLERR;
-	else if (c->subscribed && c->seen != f->sequence)
+	else if (c->subscribed && (c->offset || c->seen != f->sequence))
 		mask = EPOLLIN | EPOLLRDNORM;
 	spin_unlock(&f->events);
 	return mask;
@@ -379,13 +383,12 @@ static ssize_t fod_read(struct file *file, char __user *buf, size_t len, loff_t 
 	struct m11a_client *c = file->private_data;
 	struct mondrian_fod *f = c->fod;
 	struct mi_fod_event e = { .type = MI_FOD_EVENT, .length = sizeof(e) };
-	u64 seq;
+	u64 seq, registration;
+	size_t pos, size;
 	int rc;
 
 	if (!len)
 		return 0;
-	if (len < sizeof(e))
-		return -EINVAL;
 	if (mutex_lock_interruptible(&c->read_lock))
 		return -ERESTARTSYS;
 	for (;;) {
@@ -395,9 +398,19 @@ static ssize_t fod_read(struct file *file, char __user *buf, size_t len, loff_t 
 			spin_unlock(&f->events);
 			goto out;
 		}
+		pos = c->offset;
+		registration = c->registration;
 		seq = f->sequence;
 		e.value = f->value;
-		if (c->seen != seq) {
+		/* The 12-byte header is identical for every FOD event. Until
+		 * the first payload byte is read, OFF can supersede READY.
+		 * Once payload delivery starts, finish the same 32-bit value.
+		 */
+		if (pos > offsetof(struct mi_fod_event, value)) {
+			seq = c->partial_seq;
+			e.value = c->partial_value;
+		}
+		if (pos || c->seen != seq) {
 			spin_unlock(&f->events);
 			break;
 		}
@@ -410,13 +423,22 @@ static ssize_t fod_read(struct file *file, char __user *buf, size_t len, loff_t 
 		if (rc)
 			goto out;
 	}
+	size = min(len, sizeof(e) - pos);
 	rc = -EFAULT;
-	if (!copy_to_user(buf, &e, sizeof(e))) {
+	if (!copy_to_user(buf, (u8 *)&e + pos, size)) {
 		spin_lock(&f->events);
-		if (c->seen < seq)
-			c->seen = seq;
+		/* A new subscription can start while copy_to_user sleeps. */
+		if (registration == c->registration) {
+			c->offset = pos + size;
+			c->partial_seq = seq;
+			c->partial_value = e.value;
+			if (c->offset == sizeof(e)) {
+				c->offset = 0;
+				c->seen = seq;
+			}
+		}
 		spin_unlock(&f->events);
-		rc = sizeof(e);
+		rc = size;
 	}
 out:
 	mutex_unlock(&c->read_lock);
