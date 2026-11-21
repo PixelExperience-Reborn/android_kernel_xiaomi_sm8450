@@ -1,0 +1,59 @@
+name: Audit Xiaomi-authored Display/LHBM source for mondrian only
+
+on:
+  push:
+    branches: [bringup/a17-mondrian-oem-display-coherent-20261115]
+    paths:
+      - 'tools/verify_mondrian_xiaomi_display_candidate.py'
+      - 'tests/test_mondrian_xiaomi_display_candidate.py'
+      - '.github/workflows/mondrian-xiaomi-display-candidate.yml'
+      - 'techpack/display/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout actual PE-Reborn mondrian OEM kernel
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout exact Xiaomi manufacturer source (comparison only)
+        uses: actions/checkout@v4
+        with:
+          repository: MiCode/vendor_opensource_display-drivers
+          ref: c696b28150245a9ddd1f2701f071e4b580b44ce2
+          path: upstream/micode-display
+          persist-credentials: false
+      - name: Run fail-closed local regression tests
+        run: python3 -m unittest discover -s tests -p 'test_mondrian_xiaomi_display_candidate.py' -v
+      - name: Qualify Xiaomi official source identity and report missing mondrian ABI
+        run: |
+          set -euo pipefail
+          python3 tools/verify_mondrian_xiaomi_display_candidate.py \
+            --kernel . \
+            --xiaomi-reference upstream/micode-display \
+            --out "$RUNNER_TEMP/pe-reborn-mondrian-display-source.json"
+          python3 - "$RUNNER_TEMP/pe-reborn-mondrian-display-source.json" <<'PY'
+          import json
+          import sys
+          result = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert result["device"] == "mondrian"
+          assert result["oem_reference"]["source_from_other_xiaomi_device"]
+          assert not result["oem_reference"]["source_imported_to_mondrian"]
+          assert not result["production_display_allowed"]
+          assert not result["mondrian_udfps_lhbm_qualified"]
+          assert not result["physical_device_verified"]
+          PY
+          echo '[PASS] OEM Xiaomi LHBM reference integrity; implementation NOT enabled' >> "$GITHUB_STEP_SUMMARY"
+          echo '[BLOCKED] source is from another Xiaomi device, no factory mondrian panel or AOSP17 UDFPS runtime' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload read-only source-qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mondrian-xiaomi-display-source-gap
+          path: ${{ runner.temp }}/pe-reborn-mondrian-display-source.json
+          if-no-files-found: error
