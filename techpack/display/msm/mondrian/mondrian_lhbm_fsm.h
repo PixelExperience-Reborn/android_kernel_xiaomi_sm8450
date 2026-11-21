@@ -33,7 +33,7 @@ enum mondrian_lhbm_hw_intent {
 	MONDRIAN_LHBM_HW_OFF,
 };
 
-/* The future panel owner must serialize calls under its panel lock. */
+/* The panel owner serializes transitions under its panel lock. */
 struct mondrian_lhbm_effect {
 	enum mondrian_lhbm_hw_intent hw;
 	unsigned int token;
@@ -46,6 +46,8 @@ struct mondrian_lhbm_fsm {
 	unsigned int token;
 	bool panel_on;
 	bool doze;
+	/* Set only after a verified M11A doze brightness command succeeds. */
+	bool doze_capture;
 	bool esd;
 	bool factory_qualified;
 	bool cancel_pending;

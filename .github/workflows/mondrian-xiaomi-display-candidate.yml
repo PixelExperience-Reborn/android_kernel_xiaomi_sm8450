@@ -45,12 +45,13 @@ jobs:
           assert result["device"] == "mondrian"
           assert result["oem_reference"]["source_from_other_xiaomi_device"]
           assert not result["oem_reference"]["source_imported_to_mondrian"]
+          assert result["native_m11a_fod_candidate"]
           assert not result["production_display_allowed"]
           assert not result["mondrian_udfps_lhbm_qualified"]
           assert not result["physical_device_verified"]
           PY
-          echo '[PASS] OEM Xiaomi LHBM reference integrity; implementation NOT enabled' >> "$GITHUB_STEP_SUMMARY"
-          echo '[BLOCKED] source is from another Xiaomi device, no factory mondrian panel or AOSP17 UDFPS runtime' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PASS] OEM Xiaomi reference and native diagnostic M11A FOD consumer' >> "$GITHUB_STEP_SUMMARY"
+          echo '[PENDING] physical panel revision, Goodix fingerprint and AOSP 17 userspace' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload read-only source-qualification evidence
         uses: actions/upload-artifact@v4
         with:

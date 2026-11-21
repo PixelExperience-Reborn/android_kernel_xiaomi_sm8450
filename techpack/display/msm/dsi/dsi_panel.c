@@ -69,38 +69,16 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #ifdef CONFIG_ARCH_WAIPIO
 #define MONDRIAN_M11A_PANEL_ID 0x4d31314100420200ULL
 
-/*
- * Only called by the panel owner with panel_lock held. Until the exact
- * mondrian panel is factory-qualified, these are internal bookkeeping
- * notifications, NOT hardware writes or FOD-ready userspace events.
- */
+/* Only the PE M11A diagnostic overlay opts this panel into the FOD consumer. */
 static void dsi_panel_mondrian_lhbm_event_locked(
 	struct dsi_panel *panel, enum mondrian_lhbm_panel_event event)
 {
-	struct mondrian_lhbm_effect effect = { 0 };
-	int rc;
+	struct mondrian_lhbm_effect effect;
 
-	rc = mondrian_lhbm_panel_event(&panel->mondrian_lhbm, event, &effect);
-	if (rc && rc != -EOPNOTSUPP && rc != -ENODEV)
-		DSI_DEBUG("[%s] mondrian LHBM lifecycle rc=%d\n",
-			  panel->name, rc);
-
-	/* Hardware/FOD callbacks deliberately DO NOT exist at this stage. */
-	if (effect.hw != MONDRIAN_LHBM_HW_NONE ||
-	    effect.signal_fod_ready) {
-		DSI_ERR("[%s] unauthorized mondrian LHBM effect discarded\n",
-			panel->name);
-		/*
-		 * Fail closed without resetting generation tokens or clearing
-		 * the PRE_OFF/ESD latch. A false reinitialization here could
-		 * allow PANEL_ON before the real power rails are disabled.
-		 */
-		panel->mondrian_lhbm.factory_qualified = false;
-		if (event != MONDRIAN_LHBM_PANEL_OFF) {
-			panel->mondrian_lhbm.phase = MONDRIAN_LHBM_FAULT;
-			panel->mondrian_lhbm.power_off_pending = true;
-		}
-	}
+	if (panel->mondrian_fod)
+		mondrian_fod_event_locked(panel, event);
+	else
+		mondrian_lhbm_panel_event(&panel->mondrian_lhbm, event, &effect);
 }
 #endif
 
@@ -776,7 +754,15 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		rc = backlight_device_set_brightness(bl->raw_bd, bl_lvl);
 		break;
 	case DSI_BACKLIGHT_DCS:
+#ifdef CONFIG_ARCH_WAIPIO
+		if (mondrian_fod_defer_bl_locked(panel, bl_lvl))
+			break;
+#endif
 		rc = dsi_panel_update_backlight(panel, bl_lvl);
+#ifdef CONFIG_ARCH_WAIPIO
+		if (rc >= 0 && !atomic_read(&panel->esd_recovery_pending))
+			mondrian_fod_applied_bl_locked(panel, bl_lvl);
+#endif
 		break;
 	case DSI_BACKLIGHT_EXTERNAL:
 		break;
@@ -5510,6 +5496,11 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc)
+		goto exit;
+#endif
 
 	/*
 	 * Consider LP1->LP2->LP1.
@@ -5552,6 +5543,11 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc)
+		goto exit;
+#endif
 
 	if (panel->disp_op == MSM_DISP_OP_HWIO) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2, false);
@@ -5596,6 +5592,9 @@ exit:
 int dsi_panel_set_nolp(struct dsi_panel *panel)
 {
 	int rc = 0;
+#ifdef CONFIG_ARCH_WAIPIO
+	bool handled;
+#endif
 
 	if (!panel) {
 		DSI_ERR("invalid params\n");
@@ -5605,6 +5604,11 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc)
+		goto exit;
+#endif
 
 	/*
 	 * Consider about LP1->LP2->NOLP.
@@ -5614,7 +5618,14 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	     panel->power_mode == SDE_MODE_DPMS_LP2))
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_NORMAL);
+
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_nolp_locked(panel, &handled);
+	if (!handled)
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP, false);
+#else
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP, false);
+#endif
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
 		       panel->name, rc);
@@ -6238,6 +6249,13 @@ int dsi_panel_switch(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc) {
+		mutex_unlock(&panel->panel_lock);
+		return rc;
+	}
+#endif
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH, false);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",

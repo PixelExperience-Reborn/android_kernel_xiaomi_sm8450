@@ -25,6 +25,7 @@
 
 #ifdef CONFIG_ARCH_WAIPIO
 #include "../mondrian/mondrian_lhbm_fsm.h"
+#include "../mondrian/mondrian_fod.h"
 #endif
 
 #define MAX_BL_LEVEL 4096
@@ -258,7 +259,7 @@ struct dsi_panel {
 
 	struct mutex panel_lock;
 #ifdef CONFIG_ARCH_WAIPIO
-	/* Inert mondrian state; no production hardware binding is permitted. */
+	struct mondrian_fod *mondrian_fod;
 	struct mondrian_lhbm_fsm mondrian_lhbm;
 #endif
 	struct drm_panel *drm_panel;

@@ -25,9 +25,9 @@ OEM_BLOBS = {
     "include/uapi/display/drm/mi_disp.h": "545952d8c9ce572a4de1a893b383a77d8f83ecf9",
 }
 QUALCOMM_BLOBS = {
-    "techpack/display/msm/Kbuild": "89281cef95fab7a68a940856a722c502f46c93dd",
-    "techpack/display/msm/dsi/dsi_panel.c": "a50b4ff2fe0dffab76a20e6f5b3898dbeb37bf64",
-    "techpack/display/msm/dsi/dsi_panel.h": "ca4fb0345b9ef141a2e255f92003483da2743607",
+    "techpack/display/msm/Kbuild": "179080970fbf492fad15b961708b13c1f41c6352",
+    "techpack/display/msm/dsi/dsi_panel.c": "d571104b6f0f13e60fdd94b24fb8d965cf56ca53",
+    "techpack/display/msm/dsi/dsi_panel.h": "733c236304f78dcd811ccc15724876e940c6f1f6",
 }
 REQUIRED_OEM_TOKENS = {
     "msm/Kbuild": (
@@ -100,15 +100,17 @@ def inspect_mondrian_kernel(kernel):
         raise SourceAuditError("mondrian-specific OEM kernel configuration missing")
     selected = kernel / "techpack/display"
     kbuild = (selected / "msm/Kbuild").read_text(encoding="utf-8")
-    # We only certify the current absent interface. Any future integration
-    # requires a separate reviewed source/KMI/hardware milestone.
+    # The native M11A consumer is separate from the reference Xiaomi driver tree.
     if (selected / "msm/mi_disp").exists() or (
             selected / "include/uapi/display/drm/mi_disp.h").exists() or (
             "mi_disp/" in kbuild):
         raise SourceAuditError(
             "new Xiaomi Display implementation detected: requalify its UAPI, "
             "build/ABI and mondrian hardware before changing production gate")
+    native = selected / "msm/mondrian/mondrian_fod.c"
+    candidate = native.is_file() and "mondrian/mondrian_fod.o" in kbuild
     return {
+        "native_m11a_fod_candidate": candidate,
         "device": DEVICE,
         "android_base": "AOSP 17",
         "kernel_version": KERNEL_VERSION,
@@ -119,7 +121,7 @@ def inspect_mondrian_kernel(kernel):
         "mondrian_m11a_or_r66451_panel_qualified": False,
         "production_display_allowed": False,
         "physical_device_verified": False,
-        "status": "BLOCKED_MISSING_MONDRIAN_XIAOMI_LHBM_ABI_AND_FACTORY_PANEL",
+        "status": ("NATIVE_M11A_FOD_AWAITING_DEVICE" if candidate else "MISSING_M11A_FOD_DRIVER"),
     }
 
 
@@ -138,7 +140,6 @@ def audit(kernel, reference):
     report["lineage_code_imported"] = False
     report["open_qualification"] = [
         "factory mondrian panel/SKU/DSC/ESD and local HBM command verification",
-        "native Xiaomi display ABI implemented against pinned Qualcomm MSM DRM",
         "AOSP17 UDFPS HAL, compositor, VINTF and SELinux integration",
         "physical Goodix fingerprint, LHBM and panel suspend/resume tests",
     ]
@@ -159,8 +160,7 @@ def main():
         parser.error(str(exc))
     print("[PASS] Xiaomi-published display/LHBM source reference pinned")
     print("[PASS] Qualcomm MSM/DSI source remains exact and Xiaomi DRM unmodified")
-    print("[BLOCKED] no qualified mondrian LHBM/UDFPS ABI or factory panel; "
-          "DO NOT enable this in an AOSP 17 product")
+    print("[PENDING] M11A panel revision, AOSP 17 HAL integration and physical UDFPS")
 
 
 if __name__ == "__main__":

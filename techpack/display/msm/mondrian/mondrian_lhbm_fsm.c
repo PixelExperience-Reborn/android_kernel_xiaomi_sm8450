@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * mondrian-only LHBM state-machine core. The hardware consumer intentionally
- * does not exist yet: do not guess Xiaomi DCS or manufacture FOD-ready events.
- * All calls must be serialized by the eventual owner of the panel lock.
+ * Mondrian LHBM state transitions, serialized by the DSI panel owner.
  */
 #include "mondrian_lhbm_fsm.h"
 #ifdef MONDRIAN_LHBM_HOST_TEST
@@ -56,6 +54,7 @@ void mondrian_lhbm_init(struct mondrian_lhbm_fsm *fsm,
 	fsm->token = 1;
 	fsm->panel_on = false;
 	fsm->doze = false;
+	fsm->doze_capture = false;
 	fsm->esd = false;
 	fsm->factory_qualified = factory_qualified;
 	fsm->cancel_pending = false;
@@ -80,6 +79,7 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 			return -EBUSY; /* A duplicate ON cannot bypass Doze. */
 		fsm->panel_on = true;
 		fsm->doze = false;
+		fsm->doze_capture = false;
 		if (!fsm->factory_qualified)
 			return -EOPNOTSUPP;
 		if (fsm->phase == MONDRIAN_LHBM_DISABLED)
@@ -96,6 +96,7 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 			effect->signal_fod_ready = true;
 		fsm->panel_on = false;
 		fsm->doze = false;
+		fsm->doze_capture = false;
 		fsm->power_off_pending = true;
 		if (event == MONDRIAN_LHBM_ESD_DETECTED)
 			fsm->esd = true;
@@ -109,6 +110,7 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 			effect->signal_fod_ready = true;
 		fsm->panel_on = false;
 		fsm->doze = false;
+		fsm->doze_capture = false;
 		fsm->cancel_pending = false;
 		fsm->power_off_pending = false;
 		fsm->esd = false;
@@ -127,7 +129,7 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 			fsm->cancel_pending = true;
 			return 0;
 		}
-		if (fsm->phase == MONDRIAN_LHBM_IDLE)
+		if (fsm->phase == MONDRIAN_LHBM_IDLE && !fsm->doze_capture)
 			fsm->phase = MONDRIAN_LHBM_DISABLED;
 		return 0;
 	case MONDRIAN_LHBM_DOZE_EXIT:
@@ -138,6 +140,7 @@ int mondrian_lhbm_panel_event(struct mondrian_lhbm_fsm *fsm,
 		if (fsm->phase == MONDRIAN_LHBM_STOPPING)
 			return -EBUSY;
 		fsm->doze = false;
+		fsm->doze_capture = false;
 		if (fsm->factory_qualified &&
 		    fsm->phase == MONDRIAN_LHBM_DISABLED)
 			fsm->phase = MONDRIAN_LHBM_IDLE;
@@ -167,7 +170,7 @@ int mondrian_lhbm_finger(struct mondrian_lhbm_fsm *fsm, bool down,
 	}
 	if (!fsm->factory_qualified)
 		return -EOPNOTSUPP;
-	if (!fsm->panel_on || fsm->doze || fsm->esd)
+	if (!fsm->panel_on || (fsm->doze && !fsm->doze_capture) || fsm->esd)
 		return -EAGAIN;
 	if (fsm->phase == MONDRIAN_LHBM_FAULT)
 		return -EIO;
@@ -200,7 +203,7 @@ int mondrian_lhbm_complete(struct mondrian_lhbm_fsm *fsm, bool on,
 		if (fsm->phase != MONDRIAN_LHBM_STARTING)
 			return -ESTALE;
 		if (!success || fsm->cancel_pending || !fsm->panel_on ||
-		    fsm->doze || fsm->esd || !fsm->factory_qualified) {
+		    (fsm->doze && !fsm->doze_capture) || fsm->esd || !fsm->factory_qualified) {
 			/* Physical ON completed before we may safely queue OFF. */
 			fsm->cancel_pending = false;
 			return request_stop(fsm, effect);
@@ -217,7 +220,7 @@ int mondrian_lhbm_complete(struct mondrian_lhbm_fsm *fsm, bool on,
 		return -EIO; /* Requires a full panel power cycle. */
 	}
 	fsm->cancel_pending = false;
-	fsm->phase = (fsm->panel_on && !fsm->doze && !fsm->esd &&
+	fsm->phase = (fsm->panel_on && (!fsm->doze || fsm->doze_capture) && !fsm->esd &&
 		      fsm->factory_qualified) ?
 		MONDRIAN_LHBM_IDLE : MONDRIAN_LHBM_DISABLED;
 	return 0;

@@ -11,6 +11,7 @@
 #include <linux/err.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
+#include <video/mipi_display.h>
 #include <drm/drm_of.h>
 #if __has_include(<linux/pinctrl/qcom-pinctrl.h>)
 #include <linux/pinctrl/qcom-pinctrl.h>
@@ -1110,9 +1111,13 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	}
 
 	/* Handle Panel failures during display disable sequence */
-	if (rc <=0)
+	if (rc <= 0) {
 		atomic_set(&panel->esd_recovery_pending, 1);
-	else
+#ifdef CONFIG_ARCH_WAIPIO
+		if (panel->mondrian_fod)
+			mondrian_fod_event_locked(panel, MONDRIAN_LHBM_ESD_DETECTED);
+#endif
+	} else
 		/* Enable error interrupts post an ESD success */
 		dsi_display_toggle_error_interrupt_status(dsi_display, true);
 
@@ -1143,7 +1148,7 @@ static int dsi_display_ctrl_get_host_init_state(struct dsi_display *dsi_display,
 	return rc;
 }
 
-static int dsi_display_cmd_rx(struct dsi_display *display,
+static int dsi_display_cmd_rx_locked(struct dsi_display *display,
 			      struct dsi_cmd_desc *cmd)
 {
 	struct dsi_display_ctrl *m_ctrl = NULL;
@@ -1157,19 +1162,20 @@ static int dsi_display_cmd_rx(struct dsi_display *display,
 	if (!m_ctrl || !m_ctrl->ctrl)
 		return -EINVAL;
 
-	/* acquire panel_lock to make sure no commands are in progress */
-	dsi_panel_acquire_panel_lock(display->panel);
+	lockdep_assert_held(&display->panel->panel_lock);
 	if (!display->panel->panel_initialized) {
 		DSI_DEBUG("panel not initialized\n");
-		goto release_panel_lock;
+		return 0;
 	}
 
 	if (phy_pll_bypass(display))
-		goto release_panel_lock;
+		return 0;
 
 	flags = DSI_CTRL_CMD_READ;
 
-	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
+	rc = dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
+	if (rc)
+		return rc;
 	dsi_display_toggle_error_interrupt_status(display, false);
 	cmd->ctrl_flags = flags;
 	dsi_display_set_cmd_tx_ctrl_flags(display, cmd);
@@ -1186,10 +1192,68 @@ static int dsi_display_cmd_rx(struct dsi_display *display,
 enable_error_interrupts:
 	dsi_display_toggle_error_interrupt_status(display, true);
 	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
-release_panel_lock:
+	return rc;
+}
+
+static int dsi_display_cmd_rx(struct dsi_display *display, struct dsi_cmd_desc *cmd)
+{
+	int rc;
+
+	if (!display || !display->panel)
+		return -EINVAL;
+	dsi_panel_acquire_panel_lock(display->panel);
+	rc = dsi_display_cmd_rx_locked(display, cmd);
 	dsi_panel_release_panel_lock(display->panel);
 	return rc;
 }
+
+#ifdef CONFIG_ARCH_WAIPIO
+int m11a_host_ready(struct dsi_display *d)
+{
+	bool ready = false;
+	int i, rc;
+
+	lockdep_assert_held(&d->panel->panel_lock);
+	if (!d->panel->panel_initialized || !d->ctrl_count ||
+	    d->cmd_master_idx >= d->ctrl_count || !d->ctrl[d->cmd_master_idx].phy ||
+	    d->panel->disp_op != MSM_DISP_OP_HWIO || d->trusted_vm_env ||
+	    d->is_cont_splash_enabled || is_sim_panel(d) || phy_pll_bypass(d) ||
+	    atomic_read(&d->panel->esd_recovery_pending))
+		return -EAGAIN;
+	display_for_each_ctrl(i, d) {
+		if (!d->ctrl[i].ctrl || !d->ctrl[i].ctrl->drm_dev || d->ctrl[i].ctrl->secure_mode)
+			return -EAGAIN;
+	}
+	rc = dsi_display_ctrl_get_host_init_state(d, &ready);
+	if (rc)
+		return rc;
+	return ready ? 0 : -EAGAIN;
+}
+
+int m11a_dcs_read_locked(struct dsi_display *d, u8 reg, void *buf, size_t len)
+{
+	struct dsi_cmd_desc cmd = {
+		.msg = { .type = MIPI_DSI_DCS_READ, .tx_buf = &reg, .tx_len = 1,
+			 .rx_buf = buf, .rx_len = len,
+			 .flags = MIPI_DSI_MSG_REQ_ACK | MIPI_DSI_MSG_USE_LPM |
+				  MIPI_DSI_MSG_UNICAST_COMMAND },
+		.ctrl = d->cmd_master_idx, .last_command = true,
+	};
+	int rc = m11a_host_ready(d);
+
+	if (rc)
+		return rc;
+	if (!d->tx_cmd_buf) {
+		rc = dsi_host_alloc_cmd_tx_buffer(d);
+		if (rc)
+			return rc;
+	}
+	rc = dsi_display_cmd_rx_locked(d, &cmd);
+	if (rc < 0)
+		return rc;
+	return rc == len ? m11a_host_ready(d) : -EIO;
+}
+#endif
 
 
 int dsi_display_cmd_transfer(struct drm_connector *connector,
@@ -6486,6 +6550,10 @@ static int dsi_display_bind(struct device *dev,
 		display->display_type = "primary";
 	}
 
+#ifdef CONFIG_ARCH_WAIPIO
+	if (!rc)
+		mondrian_fod_attach(display);
+#endif
 	goto error;
 
 error_host_deinit:
@@ -6533,6 +6601,10 @@ static void dsi_display_unbind(struct device *dev,
 		return;
 	}
 
+	/* Drain FOD requests before acquiring the display lock for teardown. */
+#ifdef CONFIG_ARCH_WAIPIO
+	mondrian_fod_detach(display);
+#endif
 	mutex_lock(&display->display_lock);
 
 	/* remove the display from the manager list */
