@@ -24,6 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/verify_official_qualcomm_display.py
+          python3 -m unittest discover -s tests -p 'test_mondrian_ci_dispatch.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_dsc_bounds.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_lhbm_panel_lifecycle.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_wl2866d_power.py' -v
@@ -43,6 +44,9 @@ jobs:
           echo '[PASS] Qualcomm WAIPIO display source pinned; Xiaomi generic DRM not enabled' >> "$GITHUB_STEP_SUMMARY"
 
   compile:
+    # Full OEM vmlinux/Module.symvers and Qualcomm Display/MMRM are expensive.
+    # Keep push source diagnostics, run the memory-heavy job only on request.
+    if: github.event_name == 'workflow_dispatch'
     needs: source
     runs-on: ubuntu-24.04
     timeout-minutes: 85
