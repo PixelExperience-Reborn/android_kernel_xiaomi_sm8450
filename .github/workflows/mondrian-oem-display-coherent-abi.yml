@@ -24,6 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/verify_official_qualcomm_display.py
+          python3 tools/verify_mondrian_goodix.py
           python3 -m unittest discover -s tests -p 'test_mondrian_ci_dispatch.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_dsc_bounds.py' -v
           python3 -m unittest discover -s tests -p 'test_mondrian_lhbm_panel_lifecycle.py' -v
@@ -133,7 +134,7 @@ jobs:
           export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
           test "$(git -C kernel rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git -C kernel hash-object drivers/thermal/qcom/qti_cpufreq_cdev.c)" = 838273f5b513b9afc04886dec65f2443c1c96783
-          test "$(git -C kernel hash-object drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_core.c)" = b69ef74097add548baa4aba65aa0293c4d7e8c40
+          test "$(git -C kernel hash-object drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_core.c)" = 0d45ff5551bda42948d232e05a0c4520e2736348
           test "$(git -C kernel hash-object drivers/clk/qcom/dispcc-waipio.c)" = 99154962330757af632e7e4423c8e84ddff6c3d0
           python3 kernel/tools/verify_official_qualcomm_display.py
           grep -Fx 'SUBLEVEL = 81' kernel/Makefile

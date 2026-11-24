@@ -849,22 +849,32 @@ static int goodix_check_panel_dt(struct device_node *np,
     int count;
     struct device_node *node;
     struct drm_panel *panel;
+    int ret = -ENODEV;
+
+    board_data->active_panel = NULL;
+    if (!of_find_property(np, "panel", NULL))
+        return of_property_read_bool(np, "goodix,require-panel-notifier") ?
+            -EINVAL : 0;
 
     count = of_count_phandle_with_args(np, "panel", NULL);
     if (count <= 0)
-        return 0;
+        return count < 0 ? count : -EINVAL;
 
     for (i = 0; i < count; i++) {
         node = of_parse_phandle(np, "panel", i);
+        if (!node)
+            continue;
         panel = of_drm_find_panel(node);
         of_node_put(node);
         if (!IS_ERR(panel)) {
             board_data->active_panel = panel;
             return 0;
         }
+        if (PTR_ERR(panel) == -EPROBE_DEFER)
+            ret = -EPROBE_DEFER;
     }
 
-    return -ENODEV;
+    return ret;
 }
 #endif
 /**
@@ -1029,8 +1039,10 @@ static int goodix_parse_dt(struct device *dev,
 
 #if IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
     r = goodix_check_panel_dt(node, board_data);
+    if (r && of_property_read_bool(node, "goodix,require-panel-notifier"))
+        return r;
     if (r)
-        ts_err(dev, "check panel dt failed");
+        ts_err(dev, "check panel dt failed: %d; using PM fallback", r);
 #endif
 
 	/* get xyz resolutions */
@@ -1253,13 +1265,13 @@ static irqreturn_t goodix_ts_threadirq_func(int irq, void *data)
                 ts_event->event_type & EVENT_PEN) {
                 goodix_ts_report_pen(core_data, &ts_event->pen_data);
             }
-        } else if (core_data->gesture_type > 0) { // gesture mode
+        } else if (READ_ONCE(core_data->suspend_gestures)) { // gesture mode
             if (ts_event->event_type & EVENT_GESTURE) {
                 goodix_ts_report_gesture(core_data, ts_event);
             } else {
                 /* resend gesture cmd */
                 ts_info(dev, "can't recv gesture event, resend gesture cmd");
-                hw_ops->gesture(core_data, core_data->gesture_type);
+                hw_ops->gesture(core_data, READ_ONCE(core_data->suspend_gestures));
             }
         }
 
@@ -1731,7 +1743,7 @@ static void goodix_ts_release_connects(struct goodix_ts_core *core_data)
  * goodix_ts_suspend - Touchscreen suspend function
  * Called by PM/FB/EARLYSUSPEN module to put the device to sleep
  */
-static int goodix_ts_suspend(struct goodix_ts_core *core_data)
+static int goodix_ts_suspend_locked(struct goodix_ts_core *core_data)
 {
 	struct device *dev = core_data->bus->dev;
 	struct goodix_ts_hw_ops *hw_ops = core_data->hw_ops;
@@ -1741,6 +1753,7 @@ static int goodix_ts_suspend(struct goodix_ts_core *core_data)
 		return 0;
 
 	ts_info(dev, "Suspend start");
+	core_data->suspend_gestures = READ_ONCE(core_data->gesture_type);
 	atomic_set(&core_data->suspended, 1);
 	/* disable irq */
 	hw_ops->irq_enable(core_data, false);
@@ -1748,12 +1761,19 @@ static int goodix_ts_suspend(struct goodix_ts_core *core_data)
 	/* release all points */
 	goodix_ts_release_connects(core_data);
 
-	if (core_data->gesture_type) {
+	if (core_data->suspend_gestures) {
 		/* enter gesture mode */
-		ts_info(dev, "enter gesture mode[0x%x]", core_data->gesture_type);
-		hw_ops->gesture(core_data, core_data->gesture_type);
+		ts_info(dev, "enter gesture mode[0x%x]", core_data->suspend_gestures);
+		hw_ops->gesture(core_data, core_data->suspend_gestures);
+		if (!core_data->irq_wake_enabled) {
+			int ret = enable_irq_wake(core_data->irq);
+
+			if (ret)
+				ts_err(dev, "enable IRQ wake failed: %d", ret);
+			else
+				core_data->irq_wake_enabled = true;
+		}
 		hw_ops->irq_enable(core_data, true);
-		enable_irq_wake(core_data->irq);
 	} else {
 		/* enter sleep mode or power off */
 		if (core_data->board_data->sleep_enable)
@@ -1770,7 +1790,7 @@ static int goodix_ts_suspend(struct goodix_ts_core *core_data)
  * goodix_ts_resume - Touchscreen resume function
  * Called by PM/FB/EARLYSUSPEN module to wakeup device
  */
-static int goodix_ts_resume(struct goodix_ts_core *core_data)
+static int goodix_ts_resume_locked(struct goodix_ts_core *core_data)
 {
 	struct device *dev = core_data->bus->dev;
 	struct goodix_ts_hw_ops *hw_ops = core_data->hw_ops;
@@ -1783,8 +1803,17 @@ static int goodix_ts_resume(struct goodix_ts_core *core_data)
 	atomic_set(&core_data->suspended, 0);
 	hw_ops->irq_enable(core_data, false);
 
-	if (core_data->gesture_type) {
-		disable_irq_wake(core_data->irq);
+	if (core_data->irq_wake_enabled) {
+		int ret = disable_irq_wake(core_data->irq);
+
+		if (ret)
+			ts_err(dev, "disable IRQ wake failed: %d", ret);
+		else
+			core_data->irq_wake_enabled = false;
+	}
+
+	/* Resume the hardware mode actually entered, not a later sysfs request. */
+	if (core_data->suspend_gestures) {
 		hw_ops->resume(core_data);
 	} else {
 		/* reset device or power on*/
@@ -1794,12 +1823,33 @@ static int goodix_ts_resume(struct goodix_ts_core *core_data)
 			goodix_ts_power_on(core_data);
 	}
 
+	core_data->suspend_gestures = 0;
 	/* enable irq */
 	hw_ops->irq_enable(core_data, true);
 	/* open esd */
 	goodix_ts_esd_on(core_data);
 	ts_info(dev, "Resume end");
 	return 0;
+}
+
+static int goodix_ts_suspend(struct goodix_ts_core *core_data)
+{
+	int ret;
+
+	mutex_lock(&core_data->pm_lock);
+	ret = goodix_ts_suspend_locked(core_data);
+	mutex_unlock(&core_data->pm_lock);
+	return ret;
+}
+
+static int goodix_ts_resume(struct goodix_ts_core *core_data)
+{
+	int ret;
+
+	mutex_lock(&core_data->pm_lock);
+	ret = goodix_ts_resume_locked(core_data);
+	mutex_unlock(&core_data->pm_lock);
+	return ret;
 }
 
 static void goodix_ts_resume_work(struct work_struct *work)
@@ -1856,8 +1906,9 @@ static void goodix_ts_drm_notifier_callback(enum panel_event_notifier_tag tag,
 
     switch (notification->notif_type) {
     case DRM_PANEL_EVENT_BLANK:
+    case DRM_PANEL_EVENT_BLANK_LP:
         if (notification->notif_data.early_trigger)
-            ts_info(dev, "resume notification pre commit");
+            ts_info(dev, "blank notification pre commit");
         else {
             cancel_work_sync(&core_data->resume_work);
             goodix_ts_suspend(core_data);
@@ -1865,7 +1916,7 @@ static void goodix_ts_drm_notifier_callback(enum panel_event_notifier_tag tag,
         break;
     case DRM_PANEL_EVENT_UNBLANK:
         if (notification->notif_data.early_trigger)
-            ts_info(dev, "suspend notification pre commit");
+            ts_info(dev, "unblank notification pre commit");
         else {
             schedule_work(&core_data->resume_work);
         }
@@ -1905,6 +1956,16 @@ int goodix_ts_fb_notifier_callback(struct notifier_block *self,
 #endif
 
 #ifdef CONFIG_PM
+/* pm_lock protects notifier publication and the fallback transition. */
+static bool goodix_panel_owns_pm(struct goodix_ts_core *core_data)
+{
+#if !defined(CONFIG_DRM_MEDIATEK) && IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
+	return !IS_ERR_OR_NULL(core_data->cookie);
+#else
+	return false;
+#endif
+}
+
 /**
  * goodix_ts_pm_suspend - PM suspend function
  * Called by kernel during system suspend phrase
@@ -1913,7 +1974,13 @@ static int goodix_ts_pm_suspend(struct device *dev)
 {
 	struct goodix_ts_core *core_data = dev_get_drvdata(dev);
 
-	return goodix_ts_suspend(core_data);
+	int ret = 0;
+
+	mutex_lock(&core_data->pm_lock);
+	if (!goodix_panel_owns_pm(core_data))
+		ret = goodix_ts_suspend_locked(core_data);
+	mutex_unlock(&core_data->pm_lock);
+	return ret;
 }
 /**
  * goodix_ts_pm_resume - PM resume function
@@ -1923,7 +1990,13 @@ static int goodix_ts_pm_resume(struct device *dev)
 {
 	struct goodix_ts_core *core_data = dev_get_drvdata(dev);
 
-	return goodix_ts_resume(core_data);
+	int ret = 0;
+
+	mutex_lock(&core_data->pm_lock);
+	if (!goodix_panel_owns_pm(core_data))
+		ret = goodix_ts_resume_locked(core_data);
+	mutex_unlock(&core_data->pm_lock);
+	return ret;
 }
 
 static const struct dev_pm_ops dev_pm_ops = {
@@ -1993,6 +2066,27 @@ int goodix_ts_stage2_init(struct goodix_ts_core *cd)
 	/* Notifiers can schedule resume immediately after registration. */
 	INIT_WORK(&cd->resume_work, goodix_ts_resume_work);
 
+	/* create sysfs files */
+	goodix_ts_sysfs_init(cd);
+
+	/* create procfs files */
+	goodix_ts_procfs_init(cd);
+
+	/* esd protector */
+	if (cd->board_data->esd_enable)
+		goodix_ts_esd_init(cd);
+
+	/* gesture init */
+	gesture_module_init(cd);
+
+	/* inspect init */
+	inspect_module_init(cd);
+
+	/* Do self check on first boot */
+	INIT_WORK(&cd->self_check_work, goodix_self_check);
+	/* All resources used by callbacks are ready before notifier publication. */
+	mutex_lock(&cd->pm_lock);
+	cd->init_stage = CORE_INIT_STAGE2;
 #ifdef CONFIG_DRM_MEDIATEK
     cd->pm_notifier.notifier_call = goodix_ts_mtk_drm_notifier_callback;
     if (mtk_disp_notifier_register(GOODIX_CORE_DRIVER_NAME, &cd->pm_notifier))
@@ -2016,24 +2110,7 @@ int goodix_ts_stage2_init(struct goodix_ts_core *cd)
     if (fb_register_client(&cd->pm_notifier))
         ts_err(dev, "Failed to register fb notifier client:%d", ret);
 #endif
-	/* create sysfs files */
-	goodix_ts_sysfs_init(cd);
-
-	/* create procfs files */
-	goodix_ts_procfs_init(cd);
-
-	/* esd protector */
-	if (cd->board_data->esd_enable)
-		goodix_ts_esd_init(cd);
-
-	/* gesture init */
-	gesture_module_init(cd);
-
-	/* inspect init */
-	inspect_module_init(cd);
-
-	/* Do self check on first boot */
-	INIT_WORK(&cd->self_check_work, goodix_self_check);
+	mutex_unlock(&cd->pm_lock);
 	schedule_work(&cd->self_check_work);
 #if (GOODIX_ENABLE_DUMP_DEV)
 	goodix_dump_dev_init(cd);
@@ -2133,7 +2210,6 @@ static int goodix_later_init_thread(void *data)
 		goto err_out;
 	}
 
-	cd->init_stage = CORE_INIT_STAGE2;
 	return 0;
 err_out:
 	cd->init_stage = CORE_INIT_FAIL;
@@ -2211,6 +2287,7 @@ static int goodix_ts_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, core_data);
 	/* Sysfs/debug users and the asynchronous setup thread may use this. */
 	mutex_init(&core_data->cmd_lock);
+	mutex_init(&core_data->pm_lock);
 
 	/* get GPIO resource */
 	ret = goodix_ts_gpio_setup(core_data);
@@ -2306,6 +2383,14 @@ static int goodix_ts_remove(struct platform_device *pdev)
 		gesture_module_exit(core_data);
 		inspect_module_exit(core_data);
 		hw_ops->irq_enable(core_data, false);
+		if (core_data->irq_wake_enabled) {
+			int ret = disable_irq_wake(core_data->irq);
+
+			if (ret)
+				ts_err(dev, "disable IRQ wake on remove failed: %d", ret);
+			else
+				core_data->irq_wake_enabled = false;
+		}
 		if (atomic_read(&ts_esd->esd_on))
 			goodix_ts_esd_off(core_data);
 
@@ -2351,7 +2436,8 @@ static struct platform_driver goodix_ts_driver = {
 	.driver = {
 		.name = GOODIX_CORE_DRIVER_NAME,
 		.owner = THIS_MODULE,
-#if defined(CONFIG_PM) && !defined(CONFIG_DRM_MEDIATEK) && !defined(CONFIG_FB)
+#if defined(CONFIG_PM) && !defined(CONFIG_DRM_MEDIATEK) && \
+    (IS_REACHABLE(CONFIG_QCOM_PANEL_EVENT_NOTIFIER) || !defined(CONFIG_FB))
 		.pm = &dev_pm_ops,
 #endif
 	},

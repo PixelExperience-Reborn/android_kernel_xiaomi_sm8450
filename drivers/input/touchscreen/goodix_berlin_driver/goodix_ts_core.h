@@ -763,6 +763,10 @@ struct goodix_ts_core {
 	struct input_dev *input_dev;
 	struct input_dev *pen_dev;
 	struct mutex cmd_lock;
+	/* Serialize panel-driven and fallback system PM transitions. */
+	struct mutex pm_lock;
+	u32 suspend_gestures;
+	bool irq_wake_enabled;
 	/* One-shot firmware/setup thread must finish before device teardown. */
 	struct task_struct *init_thread;
 	/* TODO counld we remove this from core data? */

@@ -95,7 +95,30 @@ def main():
             core.index("panel_event_notifier_register("),
             "Goodix resume work must be initialized before notifier callbacks")
     require("#ifdef CONFIG_PM" in core and ".pm = &dev_pm_ops" in core,
-            "system PM fallback is required until the mondrian panel DT link is verified")
+            "system PM fallback is required if no panel notifier owns the touch state")
+    notifier = core.split("static void goodix_ts_drm_notifier_callback(", 1)[1].split(
+        "#elif defined(CONFIG_FB)", 1)[0]
+    require("case DRM_PANEL_EVENT_BLANK:\n    case DRM_PANEL_EVENT_BLANK_LP:" in notifier,
+            "Goodix must enter suspend on both display blank and AOD")
+    for name, transition in (("suspend", "suspend_locked"), ("resume", "resume_locked")):
+        pm = core.split(f"static int goodix_ts_pm_{name}(", 1)[1].split("\n}", 1)[0]
+        require(pm.index("mutex_lock(&core_data->pm_lock)") <
+                pm.index("if (!goodix_panel_owns_pm(core_data))") <
+                pm.index(f"goodix_ts_{transition}(core_data)") <
+                pm.index("mutex_unlock(&core_data->pm_lock)"),
+                f"System PM {name} must not override the registered panel")
+    require("return !IS_ERR_OR_NULL(core_data->cookie);" in core,
+            "Only a successful notifier registration owns display-driven power")
+    require("core_data->suspend_gestures = READ_ONCE(core_data->gesture_type);" in core and
+            "if (core_data->suspend_gestures)" in core and
+            "if (core_data->irq_wake_enabled)" in core,
+            "Resume must use the actual suspend mode and balance IRQ wake")
+    require('if (r && of_property_read_bool(node, "goodix,require-panel-notifier"))' in parse_dt
+            and "ret = -EPROBE_DEFER;" in core,
+            "A required panel provider must defer; legacy DTs retain fallback")
+    require(core.index("cd->init_stage = CORE_INIT_STAGE2;") <
+            core.index("panel_event_notifier_register("),
+            "Panel notifier must see completed stage-2 resources")
     require("cancel_work_sync(&core_data->self_check_work);" in core,
             "Goodix teardown must finish firmware self-check work before deallocation")
     finger = core.split("static int goodix_ts_input_dev_config(", 1)[1].split(
