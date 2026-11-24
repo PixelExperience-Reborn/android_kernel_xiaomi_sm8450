@@ -2071,13 +2071,17 @@ static int disp_cc_waipio_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = pm_runtime_get_sync(&pdev->dev);
+	/*
+	 * pm_runtime_get_sync() may return a positive value on success.
+	 * resume_and_get() returns zero on success and balances an error.
+	 */
+	ret = pm_runtime_resume_and_get(&pdev->dev);
 	if (ret)
 		return ret;
 
 	ret = disp_cc_waipio_fixup(pdev, regmap);
 	if (ret)
-		return ret;
+		goto err_pm_put;
 
 	clk_lucid_evo_pll_configure(&disp_cc_pll0, regmap, &disp_cc_pll0_config);
 	clk_lucid_evo_pll_configure(&disp_cc_pll1, regmap, &disp_cc_pll1_config);
@@ -2094,12 +2098,15 @@ static int disp_cc_waipio_probe(struct platform_device *pdev)
 	ret = qcom_cc_really_probe(pdev, &disp_cc_waipio_desc, regmap);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register DISP CC clocks\n");
-		return ret;
+		goto err_pm_put;
 	}
 
 	pm_runtime_put_sync(&pdev->dev);
 	dev_info(&pdev->dev, "Registered DISP CC clocks\n");
+	return 0;
 
+err_pm_put:
+	pm_runtime_put_sync(&pdev->dev);
 	return ret;
 }
 

@@ -42,3 +42,17 @@ fingerprint-on-display. Neither the manufacturer baseline nor simple
 OF-compatible matching proves all those behaviors for this phone.
 
 The source branch remains Draft, and `seventeen` stays unchanged.
+
+## Panel-driven PM correction (2026-11-24)
+
+The Qualcomm panel subscription owns touch suspend/resume when registration
+succeeds; system PM remains a fallback when it is absent or fails. LP1/LP2
+uses the same post-commit suspend path as BLANK. The PM mutex serializes
+transitions and registration. Resume uses the entered gesture mode rather
+than the current sysfs mask, and IRQ wake is balanced only after successful
+enablement. The native M11A DT overlay must reference the primary DSI device
+used by DRM panel registration. Its explicit goodix,require-panel-notifier
+property defers probe until DRM is ready; legacy DTs retain PM fallback. Userspace must configure FOD and wake gestures
+before blank; live changes to gesture policy while suspended, physical
+AOD/UDFPS, wake-source behavior, panel registration and firmware remain
+runtime qualification gates. No automatic gesture enable or HAL claim.

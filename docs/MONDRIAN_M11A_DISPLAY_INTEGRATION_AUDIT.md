@@ -41,3 +41,136 @@ Camera, Video and Audio remain explicitly out of scope. The AOSP 17 `seventeen` 
 ### Related reviewed change
 
 DSC parser rejects zero `qcom,mdss-dsc-slice-width` and `qcom,mdss-dsc-slice-height` before using the slice width as divisor: [commit `3cddcfe`](https://github.com/PixelExperience-Reborn/android_kernel_xiaomi_sm8450/commit/3cddcfea64ef7cec109fae428c27957d3d3c97bb). This prevents invalid DTS data from causing a division-by-zero; it does not supply a missing OEM panel definition.
+
+## Xiaomi's own published mi_disp source as reference (not a mondrian import)
+
+A manufacturer-maintained independent reference now exists:
+[MiCode/vendor_opensource_display-drivers, bsp-vermeer-t-oss](https://github.com/MiCode/vendor_opensource_display-drivers/tree/bsp-vermeer-t-oss) at immutable commit `c696b28150245a9ddd1f2701f071e4b580b44ce2`.
+Its `msm/mi_disp/mi_disp_lhbm.c` and `msm/mi_disp/mi_disp_feature.c` implement Xiaomi LHBM/FOD and event handling, while `include/uapi/display/drm/mi_disp.h` defines the Xiaomi userspace ioctl ABI. This manufacturer source is **not for mondrian** and does **not** establish matching panel values, board revision, module KMI or working AOSP 17 HAL.
+
+The source-only [mondrian Xiaomi Display comparison workflow](../.github/workflows/mondrian-xiaomi-display-candidate.yml) checks the immutable manufacturer revision and Git blob hashes, compares the selected Qualcomm source and emits an explicit **BLOCKED** record. It rejects any silent partial Xiaomi-ABI import until reviewed requalification. No blobs, DTS, DCS sequences or LineageOS source have been copied to our device. Continue only with a native mondrian adaptation and physical Xiaomi-stock panel evidence. Existing triple-root compiled OEM+Qualcomm Display remains the only qualified binary milestone.
+
+The OEM comparison found a critical ABI ownership detail: the manufacturer
+`LOCAL_HBM_UI_READY` and `FOD_LOW_BRIGHTNESS_CAPTURE` bits are defined in
+`msm/mi_disp/mi_disp_lhbm.h` (kernel-internal), whereas ioctl/event names
+are in its separate UAPI `mi_disp.h`. A native AOSP17 fingerprint service
+must not assume another ROM's header layout; verify the numeric contract
+against the actual selected kernel before implementing userspace events.
+
+## Fail-closed Qualcomm DSC parser hardening (OEM 5.10.81)
+
+The selected Qualcomm parser previously rejected a zero slice height but
+**allowed height 1**, even though `sde_dsc_populate_dsc_config()` divides by
+`slice_height - 1`. The native PE-Reborn patch validates height >= 2 and
+height <= picture height before invoking that function. It also checks the
+16-bit PPS picture dimensions and the 10-bit fixed-point PPS bpp integer
+range before encoding. This affects only malformed DSC configurations;
+the 1440x3200, slice-height 32 candidate observed in third-party diagnostics
+would not be rejected on these grounds. No candidate is approved without
+independent manufacturer evidence.
+
+The source regression tests and full OEM/Display/MMRM compile gate must both
+pass at the new kernel commit before updating pinned external module and
+devicetree checks. `seventeen` and production panel selection remain unchanged.
+
+## 16 Nov 2026 — Native mondrian LHBM/FOD state model (inert hardware boundary)
+
+The native PixelExperience-Reborn C state model compiles into Qualcomm WAIPIO
+msm_drm.ko as msm/mondrian/mondrian_lhbm_fsm.o. It is an internal implementation
+component only: no DSI writes, sysfs, ioctl, exported symbol, fake device node,
+Goodix callbacks or user-facing interface have been created.
+
+State transitions are: qualified panel ON -> IDLE -> fingerprint DOWN ->
+STARTING and an ON intent -> actual hardware acknowledgement -> READY
+event -> fingerprint UP -> OFF intent -> actual hardware acknowledgement ->
+IDLE. Doze and finger cancellation invalidate pending ON operations and
+request a compensating OFF; panel OFF and ESD immediately revoke FOD ready
+and invalidate stale acknowledgements without sending unsafe DSI commands.
+Timeouts and failed OFF requests become a sticky fault until full panel reset.
+Generational tokens reject stale acknowledgements and fail on integer wrap.
+All transitions must be serialized by the future panel lock owner.
+
+The native C regression suite (11 scenarios) executes on a host compiler
+first, followed by the real pinned LLVM23 OEM 5.10.81/Qualcomm Display
+build to qualify msm_drm.ko and ABI. The explicit factory-qualification flag
+is false in production because there is currently no instantiating caller.
+Host tests simulate qualification purely to test transitions; they do
+NOT assert the real M11A/R66451 panel is qualified. Never create a false
+FOD-ready event before the actual DSI operation has been verified.
+
+Next gate: authenticated Xiaomi stock DTBO/vendor_boot, exact panel-specific
+LHBM commands, synchronized DSI hardware implementation with safe ACK/error
+path, AOSP 17 biometric/UDFPS service and SELinux/VINTF contracts, and
+physical mondrian tests of doze, ESD, thermals and fingerprint operation.
+Do not merge seventeen or enable production DTBO/LHBM from this milestone.
+
+Additional safety refinement: in-flight ON cancellation is deferred until
+its actual completion/ACK; an OFF intent must never overtake an unresolved
+ON transaction. A timed-out ON is treated as a required full-panel reset,
+not a potentially racing OFF DSI write. Duplicate PANEL_ON cannot bypass
+Doze. This behavior is host-tested before eventual hardware adaptation.
+
+## 16 Nov 2026 — inert lifecycle wiring to the actual Qualcomm DSI panel
+
+The `mondrian_lhbm_fsm` is now embedded per `struct dsi_panel` for
+`CONFIG_ARCH_WAIPIO`. `dsi_panel_get()` initializes it with
+`factory_qualified=false` unconditionally. Native `dsi_panel_enable()`
+records panel ON *after successful DSI ON* under `panel_lock`; the
+disable path invalidates FOD before DSI OFF or ESD handling, and full
+power-down reinforces OFF. LP1/LP2/NOLP events are recorded only after
+successful panel commands, also under `panel_lock`. This uses the native
+Qualcomm panel lifetime, not another ROM's device abstraction. The bridge
+discards any unintended hardware intent and resets the factory qualifier
+instead of issuing unknown DCS or reporting a fake fingerprint-ready event.
+
+The added source/locking regression suite and LLVM23 `msm_drm.ko` compile
+must pass before the new exact SHA can be pinned into Modules/Devicetrees.
+This is lifecycle observability only: continuous splash and external
+DRM-panel/bridge paths, real LHBM DSI commands, `mi_disp` UAPI, AOSP17
+Goodix HAL/SELinux/VINTF and physical tests remain unqualified. Do not
+activate fingerprint illumination from this code.
+
+## 16 Nov 2026 — Distinguish DSI shutdown from verified panel power-off
+
+Fixed a real lifecycle ordering hazard: the prior native FSM treated both
+`dsi_panel_disable()` (which begins DSI OFF and may fail) and
+`dsi_panel_post_unprepare()` (where `dsi_panel_power_off()` succeeded)
+as a completed `MONDRIAN_LHBM_PANEL_OFF`. This could clear ESD or timeout
+faults before a physical power-down, allowing a premature PANEL_ON.
+
+The native `MONDRIAN_LHBM_PANEL_QUIESCE` revokes FOD readiness before
+the DSI OFF command, sets `power_off_pending` and retains sticky FAULT
+or ESD. Only a successful physical power-off callback clears those gates
+and permits the next panel ON; a failed `dsi_panel_power_off()` leaves
+the block active. Three new host C race/fault scenarios and a Python
+lifecycle regression test check this contract. The production factory
+qualification remains false and **no LHBM DCS or Goodix notification
+is enabled**.
+
+### Unexpected effect handling must preserve power-off gate
+
+The unqualified panel bridge can theoretically receive a non-empty internal
+effect once a future qualified adapter exists. Its old fallback called
+`mondrian_lhbm_init(..., false)`, resetting generation tokens and clearing
+`power_off_pending` **before verified physical power-off**. The bridge now
+revokes `factory_qualified` and retains a sticky FAULT/power-off gate if
+the effect is not already from a successful `PANEL_OFF`. Tokens remain
+unchanged, so asynchronous acknowledgements cannot become accidentally
+valid. This is still source-only safety wiring: LHBM DCS and UDFPS HAL
+remain unimplemented, and no runtime-ready claim is made.
+
+### 16 Nov 2026 — skipped panel power-off is not a hardware ACK
+
+Audited the actual Qualcomm `dsi_panel_power_off()` and found that it
+returns `0` immediately when `panel->skip_panel_off` is true. The
+previous `dsi_panel_post_unprepare()` always dispatched
+`MONDRIAN_LHBM_PANEL_OFF` on this successful return, incorrectly clearing
+sticky ESD/FAULT/`power_off_pending` despite the rails remaining powered.
+The native mondrian bridge now dispatches this hardware-off event only when
+the physical power-off path was not skipped and returned success. A source
+regression checks the Qualcomm skip path and guarded acknowledgement; a
+host C test checks that a skipped-off fault cannot reach FOD ready or
+re-enable before a real panel OFF. This is fail-closed source safety only;
+no OEM M11A DCS, firmware, UDFPS HAL, runtime display or boot qualification
+is claimed. External Modules and Devicetrees SHA pins must be updated only
+after the new full OEM/Qualcomm Display compile succeeds.

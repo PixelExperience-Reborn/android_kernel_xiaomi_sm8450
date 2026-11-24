@@ -15,7 +15,7 @@ DISPLAY = ROOT / "techpack/display"
 EXPECTED_BLOBS = {
     "Kbuild": "cd50990e1abfbbbf37862c1fb5b231c1cc07571b",
     "config/gki_waipiodisp.conf": "6822eb3116a5b220ca3ce8850c28ab35f0e6eb52",
-    "msm/Kbuild": "ec664f1b1b5c575a76981e3df1b010c95399cdd4",
+    "msm/Kbuild": "179080970fbf492fad15b961708b13c1f41c6352",
     "msm/sde_dbg.h": "ab9b3f69e6b8c78006347c78645260307d25c342",
     "msm/qcom_display_internal.h": "574d1c903e6c04edfc247f76dd829c25f92c5e66",
     "msm/sde_hdcp_2x.c": "9a497ce0370a33a02822cff6ec06e33cc209c9ca",
@@ -24,9 +24,10 @@ EXPECTED_BLOBS = {
     "msm/hfi/hfi_defs_common.h": "13075ad5baf29c8ee6a85c6029f289111c2ba60d",
     "msm/sde/sde_hw_catalog.c": "2e1adf37b30a2e0645f43ffafac3c363e947c517",
     "msm/sde/sde_hw_reg_dma_v1.c": "d1d7d344ff1a7470a9373f22b09c780e75496b3a",
-    "msm/dsi/dsi_panel.c": "df552d653b86e468c08eced977c61c6745d3750a",
+    "msm/dsi/dsi_panel.c": "d571104b6f0f13e60fdd94b24fb8d965cf56ca53",
+    "msm/dsi/dsi_panel.h": "733c236304f78dcd811ccc15724876e940c6f1f6",
     "msm/dsi/dsi_drm.c": "3c52f593cbae74edb64f65cadece113f5b8825e8",
-    "msm/dsi/dsi_display.c": "30834f3f1cdc7e64fc4d1273837c96d8f6286537",
+    "msm/dsi/dsi_display.c": "311b86748b98d8b320c1e9ff8162947f4073d08a",
 }
 OEM_GENERIC_MAKEFILE_SHA = "340682cd0f320d83921799eaff3f716c7e08fc1a"
 
@@ -75,6 +76,8 @@ def verify_build_profiles():
         check(len(selected_objects) == len(set(selected_objects)),
               f"{name}: duplicate object linked into msm_drm.o")
         objects = set(selected_objects)
+        check(("mondrian/mondrian_lhbm_fsm.o" in objects) == (waipio == "y"),
+              f"{name}: native mondrian LHBM FSM must be WAIPIO-only")
         check({"sde/sde_hw_dsc.o", "sde/sde_hw_dsc_1_2.o", "sde_dsc_helper.o",
                "dsi/dsi_panel.o"} <= objects,
               f"{name}: native SDE/DSI/DSC objects were lost")
@@ -174,7 +177,7 @@ def main():
     # M11A reference modes use nonzero 720x32 DSC slices; malformed future
     # DTS values must be rejected before the C modulo/division operations.
     dsc_parser = panel_src[panel_src.index("static int dsi_panel_parse_dsc_params("):]
-    zero_height_guard = dsc_parser.find('DSI_ERR("invalid zero DSC slice height')
+    zero_height_guard = dsc_parser.find('DSI_ERR("invalid DSC slice height:')
     zero_width_guard = dsc_parser.find('DSI_ERR("invalid zero DSC slice width')
     width_division = dsc_parser.find("intf_width % priv_info->dsc.config.slice_width")
     check(0 <= zero_height_guard < zero_width_guard < width_division,

@@ -93,13 +93,12 @@ static int md_testing_mode_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct ant_gpio_data *ant_data;
 	int ant_gpio_num,i;
-	uint32_t hw_country_ver = 0;
 	pr_info("%s enter\n", __func__);
-	hw_country_ver = get_hw_country_version();
-	if ((uint32_t)CountryCN == hw_country_ver) {
+	/* HWID is a module on mondrian: built-in callers cannot link to it. */
+#if IS_REACHABLE(CONFIG_MI_HARDWARE_ID)
+	if (get_hw_country_version() == CountryCN)
 		pr_info("%s cn version, exit gpio-testing\n", __func__);
-		//return -EINVAL;
-	}
+#endif
 	ant_data = devm_kzalloc(dev, sizeof(struct ant_gpio_data), GFP_KERNEL);
 	if (!ant_data)
 		return -ENOMEM;
@@ -150,13 +149,11 @@ static int md_testing_mode_probe(struct platform_device *pdev)
 }
 static int md_testing_mode_remove(struct platform_device *pdev)
 {
-	uint32_t hw_country_ver = 0;
 	struct ant_gpio_data *ant_data = platform_get_drvdata(pdev);
-	hw_country_ver = get_hw_country_version();
-	if ((uint32_t)CountryCN == hw_country_ver) {
+#if IS_REACHABLE(CONFIG_MI_HARDWARE_ID)
+	if (get_hw_country_version() == CountryCN)
 		pr_info("%s cn version, exit gpio-testing\n", __func__);
-		//return -EINVAL;
-	}
+#endif
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_status.attr);
 	cancel_delayed_work_sync(&ant_data->debounce_work);
 	dev_pm_clear_wake_irq(ant_data->dev);

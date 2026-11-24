@@ -32,26 +32,6 @@ int wl2866d_camera_power_down_eeprom(void);
 int wl2866d_camera_power_down_all(void);
 int wl2866d_camera_power_up_all(void);
 
-struct wl2866d_chip {
-	struct device *dev;
-	struct i2c_client *client;
-	int    en_gpio;
-	struct regulator *vin1;
-	struct regulator *vin2;
-};
-
-struct wl2866d_map {
-	u8 reg;
-	u8 value;
-};
-
-struct wl2866d_voltage {
-	u8 avdd1;
-	u8 avdd2;
-	u8 dvdd1;
-	u8 dvdd2;
-};
-
 enum {
 	OUT_DVDD1,
 	OUT_DVDD2,
@@ -63,7 +43,24 @@ enum {
 	DISCHARGE_DISABLE,
 };
 
-#define POWER_UP_ALL_INDEX  VOL_ENABLE
 #define LAST_POWER_CH OUT_AVDD2
+
+struct wl2866d_chip {
+	struct device *dev;
+	struct i2c_client *client;
+	int    en_gpio;
+	struct regulator *vin1;
+	struct regulator *vin2;
+	u32 vin1_uv[2];
+	u32 vin2_uv[2];
+	u8 voltage[LAST_POWER_CH + 1];
+	int all_rail_users;
+	bool suspended;
+};
+
+struct wl2866d_map {
+	u8 reg;
+	u8 value;
+};
 
 #endif /* __WL2866D_H */

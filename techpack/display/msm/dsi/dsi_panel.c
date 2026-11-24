@@ -6,6 +6,7 @@
 
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 #include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
 #include <linux/msm_gpio.h>
@@ -63,6 +64,23 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #define MIN_PREFILL_LINES      40
 #define RSCC_MODE_THRESHOLD_TIME_US 40
 #define DCS_COMMAND_THRESHOLD_TIME_US 40
+
+
+#ifdef CONFIG_ARCH_WAIPIO
+#define MONDRIAN_M11A_PANEL_ID 0x4d31314100420200ULL
+
+/* Only the PE M11A diagnostic overlay opts this panel into the FOD consumer. */
+static void dsi_panel_mondrian_lhbm_event_locked(
+	struct dsi_panel *panel, enum mondrian_lhbm_panel_event event)
+{
+	struct mondrian_lhbm_effect effect;
+
+	if (panel->mondrian_fod)
+		mondrian_fod_event_locked(panel, event);
+	else
+		mondrian_lhbm_panel_event(&panel->mondrian_lhbm, event, &effect);
+}
+#endif
 
 static void dsi_dce_prepare_pps_header(char *buf, u32 pps_delay_ms)
 {
@@ -490,6 +508,17 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	SDE_EVT32(type, state, count);
 
 	if (count == 0) {
+#ifdef CONFIG_ARCH_WAIPIO
+		u64 panel_id;
+
+		/* An invalid ON table otherwise looks like an optional empty set. */
+		if (type == DSI_CMD_SET_ON &&
+		    !of_property_read_u64(panel->panel_of_node, "mi,panel-id", &panel_id) &&
+		    panel_id == MONDRIAN_M11A_PANEL_ID) {
+			DSI_ERR("[%s] missing M11A panel-on commands\n", panel->name);
+			return -EINVAL;
+		}
+#endif
 		DSI_DEBUG("[%s] No commands to be sent for state(%d)\n",
 			 panel->name, type);
 		goto error;
@@ -725,7 +754,15 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		rc = backlight_device_set_brightness(bl->raw_bd, bl_lvl);
 		break;
 	case DSI_BACKLIGHT_DCS:
+#ifdef CONFIG_ARCH_WAIPIO
+		if (mondrian_fod_defer_bl_locked(panel, bl_lvl))
+			break;
+#endif
 		rc = dsi_panel_update_backlight(panel, bl_lvl);
+#ifdef CONFIG_ARCH_WAIPIO
+		if (rc >= 0 && !atomic_read(&panel->esd_recovery_pending))
+			mondrian_fod_applied_bl_locked(panel, bl_lvl);
+#endif
 		break;
 	case DSI_BACKLIGHT_EXTERNAL:
 		break;
@@ -3367,6 +3404,19 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		return 0;
 	}
 
+	/*
+	 * DSC PPS encodes picture dimensions as 16-bit fields. Validate the
+	 * active display size before building the PPS or dividing by a slice
+	 * dimension. This also rejects an invalid zero-width interface.
+	 */
+	if (!mode->timing.h_active || !mode->timing.v_active ||
+	    mode->timing.h_active > 0xffff ||
+	    mode->timing.v_active > 0xffff) {
+		DSI_ERR("invalid DSC picture dimensions: %u x %u\n",
+			mode->timing.h_active, mode->timing.v_active);
+		return -EINVAL;
+	}
+
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsc-version", &data);
 	if (rc) {
 		priv_info->dsc.config.dsc_version_major = 0x1;
@@ -3413,8 +3463,14 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		DSI_ERR("failed to parse qcom,mdss-dsc-slice-height\n");
 		goto error;
 	}
-	if (!data) {
-		DSI_ERR("invalid zero DSC slice height\n");
+	/*
+	 * sde_dsc_populate_dsc_config() divides by (slice_height - 1).
+	 * A slice height of one would reach a kernel divide-by-zero. Values
+	 * beyond picture height also cannot describe a valid picture slice.
+	 */
+	if (data < 2 || data > mode->timing.v_active) {
+		DSI_ERR("invalid DSC slice height: %u, picture height: %u\n",
+			data, mode->timing.v_active);
 		rc = -EINVAL;
 		goto error;
 	}
@@ -3473,6 +3529,12 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 			&data);
 	if (rc) {
 		DSI_ERR("failed to parse qcom,mdss-dsc-bit-per-pixel\n");
+		goto error;
+	}
+	/* The 10-bit DSC PPS bpp field is expressed in six integer bits. */
+	if (!data || data > 0x3f) {
+		DSI_ERR("invalid DSC bits per pixel: %u\n", data);
+		rc = -EINVAL;
 		goto error;
 	}
 	priv_info->dsc.config.bits_per_pixel = data << 4;
@@ -4499,6 +4561,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
 		return ERR_PTR(-ENOMEM);
+#ifdef CONFIG_ARCH_WAIPIO
+	/* Do not enable LHBM without authenticated mondrian panel DCS. */
+	mondrian_lhbm_init(&panel->mondrian_lhbm, false);
+#endif
 
 	if (has_drm_panel_or_bridge)
 		return dsi_panel_initialize_stub(panel, parent, type, trusted_vm_env);
@@ -5430,6 +5496,11 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc)
+		goto exit;
+#endif
 
 	/*
 	 * Consider LP1->LP2->LP1.
@@ -5450,6 +5521,11 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 				panel->name, rc);
 	}
 
+#ifdef CONFIG_ARCH_WAIPIO
+	if (!rc)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+			MONDRIAN_LHBM_DOZE_ENTER);
+#endif
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5467,6 +5543,11 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc)
+		goto exit;
+#endif
 
 	if (panel->disp_op == MSM_DISP_OP_HWIO) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2, false);
@@ -5475,6 +5556,11 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 				panel->name, rc);
 	}
 
+#ifdef CONFIG_ARCH_WAIPIO
+	if (!rc)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+			MONDRIAN_LHBM_DOZE_ENTER);
+#endif
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5506,6 +5592,9 @@ exit:
 int dsi_panel_set_nolp(struct dsi_panel *panel)
 {
 	int rc = 0;
+#ifdef CONFIG_ARCH_WAIPIO
+	bool handled;
+#endif
 
 	if (!panel) {
 		DSI_ERR("invalid params\n");
@@ -5515,6 +5604,11 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc)
+		goto exit;
+#endif
 
 	/*
 	 * Consider about LP1->LP2->NOLP.
@@ -5524,10 +5618,22 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	     panel->power_mode == SDE_MODE_DPMS_LP2))
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_NORMAL);
+
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_nolp_locked(panel, &handled);
+	if (!handled)
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP, false);
+#else
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP, false);
+#endif
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
 		       panel->name, rc);
+#ifdef CONFIG_ARCH_WAIPIO
+	if (!rc)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+			MONDRIAN_LHBM_DOZE_EXIT);
+#endif
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -6143,6 +6249,13 @@ int dsi_panel_switch(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
+#ifdef CONFIG_ARCH_WAIPIO
+	rc = mondrian_fod_stop_locked(panel);
+	if (rc) {
+		mutex_unlock(&panel->panel_lock);
+		return rc;
+	}
+#endif
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH, false);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
@@ -6230,6 +6343,9 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		}
 	}
 	panel->panel_initialized = true;
+#ifdef CONFIG_ARCH_WAIPIO
+	dsi_panel_mondrian_lhbm_event_locked(panel, MONDRIAN_LHBM_PANEL_ON);
+#endif
 
 error:
 	mutex_unlock(&panel->panel_lock);
@@ -6355,6 +6471,12 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	}
 
 	mutex_lock(&panel->panel_lock);
+#ifdef CONFIG_ARCH_WAIPIO
+	/* Revoke pending FOD state before panel OFF or ESD recovery. */
+	dsi_panel_mondrian_lhbm_event_locked(panel,
+		atomic_read(&panel->esd_recovery_pending) ?
+		MONDRIAN_LHBM_ESD_DETECTED : MONDRIAN_LHBM_PANEL_QUIESCE);
+#endif
 
 	/* Avoid sending panel off commands when ESD recovery is underway */
 	if (!atomic_read(&panel->esd_recovery_pending)) {
@@ -6443,6 +6565,16 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 		       panel->name, rc);
 		goto error;
 	}
+#ifdef CONFIG_ARCH_WAIPIO
+	/*
+	 * dsi_panel_power_off() also returns success when skip_panel_off is
+	 * set, without disabling the physical panel rails. In that case
+	 * retain the LHBM ESD/FAULT/power-off latch until a real OFF.
+	 */
+	if (!panel->skip_panel_off)
+		dsi_panel_mondrian_lhbm_event_locked(panel,
+						   MONDRIAN_LHBM_PANEL_OFF);
+#endif
 error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
