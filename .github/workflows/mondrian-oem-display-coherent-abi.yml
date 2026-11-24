@@ -45,10 +45,13 @@ jobs:
 
   compile:
     # Full OEM vmlinux/Module.symvers and Qualcomm Display/MMRM are expensive.
-    # Keep push source diagnostics, run the memory-heavy job only on request.
-    if: github.event_name == 'workflow_dispatch'
+    # Heavy Full LTO is opt-in: manual or a single trusted bringup push.
+    # PRs never schedule builds on the shared high-memory server.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/bringup/a17-mondrian-oem-display-coherent-20261115' && contains(github.event.head_commit.message, '[serverhive-qualification]'))
     needs: source
-    runs-on: ubuntu-24.04
+    runs-on:
+      group: mondrian-heavy
+      labels: pe-mondrian-heavy
     timeout-minutes: 85
     steps:
       - name: Checkout previously staged official Qualcomm display source
@@ -66,27 +69,63 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PixelExperience-Reborn/android_kernel_xiaomi_sm8450-modules
-          ref: 3f415fc514abf22c0f8c4c37d5110559451591e0
+          ref: 9aada12412cae4997eec4510e548d7f26c91b892
           path: external-modules
           submodules: recursive
           persist-credentials: false
+      - name: Verify signed Ubuntu 24.04 dependencies preinstalled on ServerHive
+        if: runner.environment == 'self-hosted'
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = serverhive-mondrian
+          for pkg in bc bison flex make gcc device-tree-compiler libssl-dev libelf-dev dwarves binutils-aarch64-linux-gnu kmod; do
+            dpkg-query -W '-f=${Status}' "$pkg" | grep -Fxq 'install ok installed' || { echo "::error::Missing preinstalled package $pkg"; exit 1; }
+          done
+          df -h "$RUNNER_TEMP"
+          free -h
       - name: Install signed OEM kernel build prerequisites
+        if: runner.environment == 'github-hosted'
         timeout-minutes: 13
         run: bash external-modules/tools/install_ci_prerequisites.sh
       - name: Restore pinned Google Android LLVM23 compiler
+        if: runner.environment == 'github-hosted'
         id: clang-cache
         uses: actions/cache/restore@v4
         with:
           path: /tmp/google-clang
           key: mondrian-a17-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119
       - name: Fetch pinned Google Android LLVM23 when not cached
-        if: steps.clang-cache.outputs.cache-hit != 'true'
+        if: runner.environment == 'github-hosted' && steps.clang-cache.outputs.cache-hit != 'true'
         run: bash kernel/tools/fetch_android_kernel_clang.sh /tmp/google-clang
       - uses: actions/cache/save@v4
-        if: steps.clang-cache.outputs.cache-hit != 'true'
+        if: runner.environment == 'github-hosted' && steps.clang-cache.outputs.cache-hit != 'true'
         with:
           path: /tmp/google-clang
           key: mondrian-a17-clang-r614150-c9ed23e2ba198658b630d4b10e09fa980cd43119
+      - name: Restore pinned Google LLVM23 inside isolated ServerHive workspace
+        if: runner.environment == 'self-hosted'
+        run: |
+          set -euo pipefail
+          : "${RUNNER_TOOL_CACHE:?Self-hosted runner tool cache path missing}"
+          toolchain="$RUNNER_TOOL_CACHE/pe-google-clang-r614150"
+          mkdir -p "$RUNNER_TOOL_CACHE"
+          if [[ ! -e "$toolchain" ]]; then
+            bash kernel/tools/fetch_android_kernel_clang.sh "$toolchain"
+          fi
+          test "$(git -C "$toolchain" rev-parse HEAD)" = c9ed23e2ba198658b630d4b10e09fa980cd43119
+          test -x "$toolchain/clang-r614150/bin/clang"
+          test -x "$toolchain/clang-r614150/bin/ld.lld"
+          # /tmp is isolated; GitHub-hosted /tmp cache is not visible in bwrap.
+          if [[ -L /tmp/google-clang ]]; then
+            test "$(readlink /tmp/google-clang)" = "$toolchain"
+          elif [[ -e /tmp/google-clang ]]; then
+            echo "::error::Unexpected existing /tmp/google-clang"
+            exit 1
+          else
+            ln -s "$toolchain" /tmp/google-clang
+          fi
+          test "$(git -C /tmp/google-clang rev-parse HEAD)" = c9ed23e2ba198658b630d4b10e09fa980cd43119
+          /tmp/google-clang/clang-r614150/bin/clang --version
       - name: Reproduce exact OEM mondrian GKI configuration
         run: |
           set -euo pipefail
@@ -107,8 +146,12 @@ jobs:
           bash kernel/scripts/kconfig/merge_config.sh -m -r \
             -O "$RUNNER_TEMP/mondrian-out" \
             "$RUNNER_TEMP/mondrian-out/.config" \
-            kernel/arch/arm64/configs/vendor/mondrian_GKI.config
+            kernel/arch/arm64/configs/vendor/mondrian_GKI.config \
+            external-modules/tools/config/mondrian_gki_hardening.config
           make -C kernel O="$RUNNER_TEMP/mondrian-out" olddefconfig
+          python3 external-modules/tools/verify_mondrian_kernel_hardening.py \
+            --generated-config "$RUNNER_TEMP/mondrian-out/.config" \
+            --out "$RUNNER_TEMP/mondrian-gki-hardening-evidence.json"
           python3 kernel/tools/verify_mondrian_oem_eroFS.py \
             --generated-config "$RUNNER_TEMP/mondrian-out/.config"
           if grep -Eq '^CONFIG_DRM_MSM=[ym]' "$RUNNER_TEMP/mondrian-out/.config"; then
@@ -141,13 +184,23 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/display-object-build.log"
           test -s "$display/msm/msm_drm.o"
       - name: Build OEM vmlinux Image and in-tree modules for actual Module.symvers
+        env:
+          PE_CI_ENVIRONMENT: ${{ runner.environment }}
         run: |
           set -euo pipefail
           export PATH=/tmp/google-clang/clang-r614150/bin:$PATH
           export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
-          make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 vmlinux Image modules \
-            2>&1 | tee "$RUNNER_TEMP/oem-base-kernel.log"
+          if [[ "$PE_CI_ENVIRONMENT" == "self-hosted" ]]; then
+            # The proven ServerHive build used -j8 with full LTO/CFI/SCS/KASAN.
+            make -C kernel O="$RUNNER_TEMP/mondrian-out" -j8 vmlinux Image modules \
+              2>&1 | tee "$RUNNER_TEMP/oem-base-kernel.log"
+          else
+            make -C kernel O="$RUNNER_TEMP/mondrian-out" -j3 vmlinux Image modules \
+              2>&1 | tee "$RUNNER_TEMP/oem-base-kernel.log"
+          fi
           test -s "$RUNNER_TEMP/mondrian-out/Module.symvers"
+          test -s "$RUNNER_TEMP/mondrian-out/arch/arm64/boot/Image"
+          test -s "$RUNNER_TEMP/mondrian-out/vmlinux"
       - name: Verify compiled Xiaomi WL2866D Camera power module and symbol ABI
         run: |
           set -euo pipefail
@@ -211,7 +264,11 @@ jobs:
           path: |
             ${{ runner.temp }}/mondrian-out/.config
             ${{ runner.temp }}/mondrian-out/Module.symvers
+            ${{ runner.temp }}/mondrian-out/arch/arm64/boot/Image
+            ${{ runner.temp }}/mondrian-gki-hardening-evidence.json
             ${{ runner.temp }}/oem-base-kernel.log
+            ${{ github.workspace }}/external-modules/upstream/qualcomm/mmrm/driver/msm-mmrm.ko
+            ${{ github.workspace }}/techpack/display/msm/msm_drm.ko
             ${{ runner.temp }}/display-header-probe.log
             ${{ runner.temp }}/display-object-build.log
             ${{ runner.temp }}/qualcomm-msm-drm-build.log
